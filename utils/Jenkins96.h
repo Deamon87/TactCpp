@@ -12,7 +12,7 @@
 class Jenkins96 {
 public:
     // Computes the 96‑bit Jenkins lookup3 hash, returns low 64 bits (c<<32 | b)
-    uint64_t ComputeHash(const std::string& str, bool fix = true);
+    static uint64_t ComputeHash(const std::string& str, bool fix = true);
 
 private:
     ~Jenkins96() = delete;

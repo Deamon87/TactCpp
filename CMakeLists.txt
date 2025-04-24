@@ -70,6 +70,7 @@ add_executable(TactCpp main.cpp utils/KeyService.cpp
 		GroupIndex.cpp
 		GroupIndex.h
 		wow/WoWRootFlags.h
+		BuildInfo.h
 )
 
 target_link_libraries(TactCpp cpr::cpr)
