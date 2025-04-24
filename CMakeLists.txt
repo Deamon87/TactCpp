@@ -60,6 +60,8 @@ add_executable(TactCpp main.cpp utils/KeyService.cpp
 		utils/BinaryUtils.h
 		EncodingInstance.cpp
 		EncodingInstance.h
+		IndexInstance.cpp
+		IndexInstance.h
 )
 
 target_link_libraries(TactCpp cpr::cpr)
