@@ -109,3 +109,50 @@ IndexInstance::GetIndexInfo(std::span<const uint8_t> eKeyTarget) const
 
     return {offset, size, arcIdx};
 }
+
+std::vector<IndexInstance::Entry> IndexInstance::GetAllEntries() {
+    std::vector<Entry> entries;
+    const uint8_t *fileData = fileData_;
+
+    for (int i = 0; i < numBlocks_; ++i) {
+        const uint8_t* startOfBlock = fileData + i * blockSizeBytes_;
+
+        for (int j = 0; j < entriesPerBlock_; ++j) {
+            const uint8_t* entryPtr = startOfBlock + j * entrySize_;
+
+            // slice out the key
+            std::vector<uint8_t> eKey(entryPtr,
+                                      entryPtr + footer_.keyBytes);
+
+            int offset = -1;
+            int size   =  0;
+            int aIndex =  archiveIndex_;
+
+            if (isGroupArchive_) {
+                size   = ReadInt32BE(entryPtr + footer_.keyBytes);
+                aIndex = ReadInt16BE(entryPtr
+                                     + footer_.keyBytes
+                                     + footer_.sizeBytes);
+                offset = ReadInt32BE(entryPtr
+                                     + footer_.keyBytes
+                                     + footer_.sizeBytes
+                                     + 2);
+            }
+            else if (isFileIndex_) {
+                size = ReadInt32BE(entryPtr + footer_.keyBytes);
+            }
+            else {
+                size   = ReadInt32BE(entryPtr + footer_.keyBytes);
+                offset = ReadInt32BE(entryPtr
+                                     + footer_.keyBytes
+                                     + footer_.sizeBytes);
+            }
+
+            if (size != 0) {
+                entries.push_back({ eKey, offset, size, aIndex });
+            }
+        }
+    }
+
+    return entries;
+}

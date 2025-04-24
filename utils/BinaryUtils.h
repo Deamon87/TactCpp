@@ -8,6 +8,10 @@
 #include <stdexcept>
 #include <algorithm>
 
+inline int16_t ReadInt16BE(const uint8_t* ptr) {
+    return static_cast<int16_t>((ptr[0] << 8) | ptr[1]);
+}
+
 // Read big-endian unsigned 16-bit
 inline uint16_t ReadUInt16BE(const uint8_t* ptr) {
     return (uint16_t(ptr[0]) << 8) | uint16_t(ptr[1]);

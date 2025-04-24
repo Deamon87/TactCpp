@@ -8,13 +8,13 @@
 #include <optional>
 #include <filesystem>
 
-#include "RootInstance.h"
+#include "wow/WoWRootFlags.h"
 
 struct Settings {
     std::string Region        = "us";
     std::string Product       = "wow";
-    RootInstance::LocaleFlags  Locale       = RootInstance::LocaleFlags::enUS;
-    RootInstance::LoadMode     RootMode     = RootInstance::LoadMode::Normal;
+    RootWoW::LocaleFlags  Locale       = RootWoW::LocaleFlags::enUS;
+    RootWoW::LoadMode     RootMode     = RootWoW::LoadMode::Normal;
     std::optional<std::filesystem::path> BaseDir;
     std::optional<std::string> BuildConfig;
     std::optional<std::string> CDNConfig;

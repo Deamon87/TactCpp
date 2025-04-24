@@ -1,12 +1,16 @@
 #ifndef ENCODINGINSTANCE_H
 #define ENCODINGINSTANCE_H
 
+#include <memory>
+
 #include "utils/BinaryUtils.h"
 #include <string>
 #include <vector>
 #include <mutex>
 #include <stdexcept>
 #include <windows.h>
+
+#include "MemoryMappedFile.h"
 
 namespace TACTSharp {
 
@@ -29,7 +33,8 @@ struct TableSchema {
 };
 
 struct EncodingSchema {
-    uint8_t cKeySize, eKeySize;
+    uint8_t cKeySize;
+    uint8_t eKeySize;
     Range encodingSpec;
     TableSchema cEKey, eKeySpec;
 };
@@ -59,7 +64,9 @@ class EncodingInstance {
 public:
     static const EncodingResult Zero;
 
-    EncodingInstance(const std::wstring& filePath);
+    //If fileSize is -1 - it's size is take defacto
+    EncodingInstance(const std::string& filePath, int fileSize = -1);
+
     ~EncodingInstance();
 
     // lookup cKey -> (count, encKeys, decodedSize)
@@ -72,10 +79,11 @@ public:
 private:
     void ReadHeader(uint8_t& version, EncodingSchema& schema);
 
-    std::wstring          _filePath;
+    std::string           _filePath;
     size_t                _fileSize;
-    HANDLE                _hFile        = INVALID_HANDLE_VALUE;
-    HANDLE                _hMapping     = nullptr;
+
+    std::shared_ptr<MemoryMappedFile> m_file;
+
     const uint8_t*        _view         = nullptr;
 
     EncodingSchema        _schema;

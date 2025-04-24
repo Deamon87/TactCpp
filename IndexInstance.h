@@ -19,6 +19,15 @@ public:
     std::tuple<int32_t, int32_t, int16_t>
     GetIndexInfo(std::span<const uint8_t> eKeyTarget) const;
 
+    struct Entry {
+        std::vector<uint8_t> eKey;
+        int offset;
+        int size;
+        int archiveIndex;
+    };
+
+    std::vector<Entry> GetAllEntries();
+
 private:
     struct IndexFooter {
         uint8_t formatRevision, flags0, flags1;

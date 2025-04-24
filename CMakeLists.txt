@@ -66,6 +66,10 @@ add_executable(TactCpp main.cpp utils/KeyService.cpp
 		InstallInstance.h
 		BuildInstance.cpp
 		BuildInstance.h
+		Config.h
+		GroupIndex.cpp
+		GroupIndex.h
+		wow/WoWRootFlags.h
 )
 
 target_link_libraries(TactCpp cpr::cpr)

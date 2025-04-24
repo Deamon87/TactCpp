@@ -22,7 +22,7 @@ uint64_t RootInstance::ReadUInt64LE(const vector<uint8_t>& data, size_t offset) 
 
 // Constructor: load & parse the "root" file
 RootInstance::RootInstance(const string& path, const Settings& settings)
-  : m_loadedWith(settings.rootMode)
+  : m_loadedWith(settings.RootMode)
 {
     // Read entire file into memory
     auto fileSize = filesystem::file_size(path);
@@ -52,37 +52,37 @@ RootInstance::RootInstance(const string& path, const Settings& settings)
         newRoot = true;
     }
 
-    const bool fullMode = (settings.rootMode == LoadMode::Full);
+    const bool fullMode = (settings.RootMode == RootWoW::LoadMode::Full);
     const size_t rootLen = m_data.size();
 
     while (offset < rootLen) {
         uint32_t count = ReadUInt32LE(m_data, offset);
         offset += 4;
 
-        ContentFlags contentFlags;
-        LocaleFlags  localeFlags;
+        RootWoW::ContentFlags contentFlags;
+        RootWoW::LocaleFlags  localeFlags;
 
         if (dfVersion == 2) {
-            localeFlags  = static_cast<LocaleFlags>(ReadUInt32LE(m_data, offset)); offset += 4;
+            localeFlags  = static_cast<RootWoW::LocaleFlags>(ReadUInt32LE(m_data, offset)); offset += 4;
             uint32_t u1  = ReadUInt32LE(m_data, offset); offset += 4;
             uint32_t u2  = ReadUInt32LE(m_data, offset); offset += 4;
             uint8_t b    = m_data[offset++];
 
-            contentFlags = static_cast<ContentFlags>(u1 | u2 | (uint32_t(b) << 17));
+            contentFlags = static_cast<RootWoW::ContentFlags>(u1 | u2 | (uint32_t(b) << 17));
         } else {
-            contentFlags = static_cast<ContentFlags>(ReadUInt32LE(m_data, offset)); offset += 4;
-            localeFlags  = static_cast<LocaleFlags>(ReadUInt32LE(m_data, offset)); offset += 4;
+            contentFlags = static_cast<RootWoW::ContentFlags>(ReadUInt32LE(m_data, offset)); offset += 4;
+            localeFlags  = static_cast<RootWoW::LocaleFlags>(ReadUInt32LE(m_data, offset)); offset += 4;
         }
 
-        bool localeSkip  = !( (static_cast<uint32_t>(localeFlags) & static_cast<uint32_t>(LocaleFlags::All_WoW)) ||
-                              (static_cast<uint32_t>(localeFlags) & static_cast<uint32_t>(settings.locale)) );
-        bool contentSkip = (static_cast<uint32_t>(contentFlags) & static_cast<uint32_t>(ContentFlags::LowViolence)) != 0;
+        bool localeSkip  = !( (static_cast<uint32_t>(localeFlags) & static_cast<uint32_t>(RootWoW::LocaleFlags::All_WoW)) ||
+                              (static_cast<uint32_t>(localeFlags) & static_cast<uint32_t>(settings.Locale)) );
+        bool contentSkip = (static_cast<uint32_t>(contentFlags) & static_cast<uint32_t>(RootWoW::ContentFlags::LowViolence)) != 0;
         bool skipChunk   = localeSkip || contentSkip;
         if (fullMode) skipChunk = false;
 
         bool separateLookup = newRoot;
         bool doLookup = !newRoot ||
-                        ((static_cast<uint32_t>(contentFlags) & static_cast<uint32_t>(ContentFlags::NoNames)) == 0);
+                        ((static_cast<uint32_t>(contentFlags) & static_cast<uint32_t>(RootWoW::ContentFlags::NoNames)) == 0);
 
         int sizeFdid   = 4;
         int sizeCHash  = 16;
@@ -133,7 +133,7 @@ RootInstance::RootInstance(const string& path, const Settings& settings)
 
 // Query methods
 vector<RootInstance::RootEntry> RootInstance::GetEntriesByFDID(uint32_t id) const {
-    if (m_loadedWith == LoadMode::Normal) {
+    if (m_loadedWith == RootWoW::LoadMode::Normal) {
         auto it = entriesFDID.find(id);
         if (it != entriesFDID.end()) return { it->second };
     } else {
@@ -151,7 +151,7 @@ vector<RootInstance::RootEntry> RootInstance::GetEntriesByLookup(uint64_t lk) co
 
 vector<uint32_t> RootInstance::GetAvailableFDIDs() const {
     vector<uint32_t> out;
-    if (m_loadedWith == LoadMode::Normal) {
+    if (m_loadedWith == RootWoW::LoadMode::Normal) {
         out.reserve(entriesFDID.size());
         for (auto const& kv : entriesFDID) out.push_back(kv.first);
     } else {
@@ -173,7 +173,7 @@ bool RootInstance::FileExists(uint64_t lk) const {
 }
 
 bool RootInstance::FileExists(uint32_t id) const {
-    if (m_loadedWith == LoadMode::Normal)
+    if (m_loadedWith == RootWoW::LoadMode::Normal)
         return entriesFDID.find(id) != entriesFDID.end();
     else
         return entriesFDIDFull.find(id) != entriesFDIDFull.end();

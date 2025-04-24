@@ -72,4 +72,36 @@ inline std::vector<uint8_t> hexToBytes(const std::string& hex) {
     return bytes;
 }
 
+static inline std::string bytesToHexLower(const std::vector<uint8_t>& input)
+{
+    static const char* const lut = "0123456789abcdef";
+    size_t len = input.size();
+
+    std::string output;
+    output.reserve(2 * len);
+    for (size_t i = 0; i < len; ++i)
+    {
+        const unsigned char c = input[i];
+        output.push_back(lut[c >> 4]);
+        output.push_back(lut[c & 15]);
+    }
+    return output;
+}
+
+static inline std::string MD5ToHexLower(const std::array<uint8_t, 16>& input)
+{
+    static const char* const lut = "0123456789abcdef";
+    size_t len = input.size();
+
+    std::string output;
+    output.reserve(2 * len);
+    for (size_t i = 0; i < len; ++i)
+    {
+        const unsigned char c = input[i];
+        output.push_back(lut[c >> 4]);
+        output.push_back(lut[c & 15]);
+    }
+    return output;
+}
+
 #endif //STRINGUTILS_H

@@ -6,6 +6,8 @@
 #include <cmath>
 #include <iostream>
 #include <algorithm>
+
+#include "GroupIndex.h"
 #include "utils/stringUtils.h"
 
 namespace fs = std::filesystem;
@@ -19,8 +21,8 @@ BuildInstance::BuildInstance()
 void BuildInstance::LoadConfigs(const std::string& buildConfigPath,
                                 const std::string& cdnConfigPath)
 {
-    settings_->SetBuildConfig(buildConfigPath);
-    settings_->SetCDNConfig(cdnConfigPath);
+    settings_->BuildConfig = buildConfigPath;
+    settings_->CDNConfig = cdnConfigPath;
 
     auto start = std::chrono::steady_clock::now();
 
@@ -58,17 +60,17 @@ void BuildInstance::Load()
         throw std::runtime_error("Configs not loaded");
 
     // if a local base dir is set, switch CDN to local
-    if (!settings_->BaseDir.empty())
+    if (!settings_->BaseDir.has_value())
         cdn_->OpenLocal();
 
     // --- Group index ---
     auto t0 = std::chrono::steady_clock::now();
-    auto cdnVals = cdnConfig_->GetValues();
+    auto &cdnVals = cdnConfig_->Values;
     auto itGroup = cdnVals.find("archive-group");
     if (itGroup == cdnVals.end()) {
         std::cout << "No group index found in CDN config, generating fresh group index...\n";
         GroupIndex newGen;
-        auto hash = newGen.Generate(*cdn_, *settings_, "", cdnConfig_->GetValues().at("archives"));
+        auto hash = newGen.Generate(cdn_, *settings_, "", cdnConfig_->Values.at("archives"));
         auto path = fs::path(settings_->CacheDir) / cdn_->ProductDirectory() / "data"/ (hash + ".index");
 
         groupIndex_ = std::make_shared<IndexInstance>(path.string());
@@ -80,13 +82,11 @@ void BuildInstance::Load()
             groupIndex_ = std::make_shared<IndexInstance>(idxOnDisk.string());
         }
         else {
-            auto idxCache = fs::path(settings_->GetCacheDir())
-                          / cdn_->GetProductDirectory()
-                          / "data"
-                          / (grp[0] + ".index");
+            auto idxCache =
+                fs::path(settings_->CacheDir.string()) / cdn_->ProductDirectory() / "data" / (grp[0] + ".index");
             if (!fs::exists(idxCache)) {
                 GroupIndex regen;
-                regen.Generate(*cdn_, *settings_, grp[0], cdnConfig_->GetValues().at("archives"));
+                regen.Generate(cdn_, *settings_, grp[0], cdnConfig_->Values.at("archives"));
             }
             groupIndex_ = std::make_shared<IndexInstance>(idxCache.string());
         }
@@ -100,16 +100,16 @@ void BuildInstance::Load()
 
     // --- File index ---
     t0 = std::chrono::steady_clock::now();
-    auto itFile = cdnConfig_->GetValues().find("file-index");
-    if (itFile == cdnConfig_->GetValues().end())
+    auto itFile = cdnConfig_->Values.find("file-index");
+    if (itFile == cdnConfig_->Values.end())
         throw std::runtime_error("No file index found in CDN config");
 
     const auto& fileIdx = itFile->second;
-    fs::path fileOnDisk = fs::path(settings_->GetBaseDir())
+    fs::path fileOnDisk = fs::path(settings_->BaseDir.value_or(""))
                         / "Data"
                         / "indices"
                         / (fileIdx[0] + ".index");
-    if (!settings_->GetBaseDir().empty() && fs::exists(fileOnDisk)) {
+    if (!settings_->BaseDir.has_value() && fs::exists(fileOnDisk)) {
         fileIndex_ = std::make_shared<IndexInstance>(fileOnDisk.string());
     }
     else {
@@ -124,15 +124,15 @@ void BuildInstance::Load()
     }
 
     // --- Encoding ---
-    auto encSize = std::stoull(buildConfig_->GetValues().at("encoding-size")[0]);
+    auto encSize = std::stoull(buildConfig_->Values.at("encoding-size")[0]);
     t0 = std::chrono::steady_clock::now();
     auto encPath = cdn_->GetDecodedFilePath(
                        "data",
-                       buildConfig_->GetValues().at("encoding")[1],
-                       std::stoull(buildConfig_->GetValues().at("encoding-size")[1]),
+                       buildConfig_->Values.at("encoding")[1],
+                       std::stoull(buildConfig_->Values.at("encoding-size")[1]),
                        encSize
                    );
-    encoding_ = std::make_shared<EncodingInstance>(encPath, static_cast<int>(encSize));
+    encoding_ = std::make_shared<TACTSharp::EncodingInstance>(encPath, static_cast<int>(encSize));
     {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::steady_clock::now() - t0
@@ -142,18 +142,18 @@ void BuildInstance::Load()
 
     // --- Root ---
     t0 = std::chrono::steady_clock::now();
-    auto itRoot = buildConfig_->GetValues().find("root");
-    if (itRoot == buildConfig_->GetValues().end())
+    auto itRoot = buildConfig_->Values.find("root");
+    if (itRoot == buildConfig_->Values.end())
         throw std::runtime_error("No root key found in build config");
 
     auto rootBytes = hexToBytes(itRoot->second[0]);
     auto rootKeys   = encoding_->FindContentKey(rootBytes);
-    if (!rootKeys)  // assumes implicit operator!()
+    if (rootKeys.empty())  // assumes implicit operator!()
         throw std::runtime_error("Root key not found in encoding");
 
-    auto rootHex = ToHexStringLower(rootKeys[0]);
+    auto rootHex = bytesToHexLower(rootKeys.key(0));
     root_ = std::make_shared<RootInstance>(
-                cdn_->GetDecodedFilePath("data", rootHex, 0, rootKeys.DecodedFileSize),
+                cdn_->GetDecodedFilePath("data", rootHex, 0, rootKeys.decodedFileSize),
                 *settings_
             );
     {
@@ -165,18 +165,18 @@ void BuildInstance::Load()
 
     // --- Install ---
     t0 = std::chrono::steady_clock::now();
-    auto itInst = buildConfig_->GetValues().find("install");
-    if (itInst == buildConfig_->GetValues().end())
+    auto itInst = buildConfig_->Values.find("install");
+    if (itInst == buildConfig_->Values.end())
         throw std::runtime_error("No install key found in build config");
 
     auto instBytes = hexToBytes(itInst->second[0]);
     auto instKeys  = encoding_->FindContentKey(instBytes);
-    if (!instKeys)
+    if (instKeys.empty())
         throw std::runtime_error("Install key not found in encoding");
 
-    auto instHex = ToHexStringLower(instKeys[0]);
+    auto instHex = bytesToHexLower(instKeys.key(0));
     install_ = std::make_shared<InstallInstance>(
-                   cdn_->GetDecodedFilePath("data", instHex, 0, instKeys.DecodedFileSize)
+                   cdn_->GetDecodedFilePath("data", instHex, 0, instKeys.decodedFileSize)
                );
     {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -195,7 +195,7 @@ std::vector<uint8_t> BuildInstance::OpenFileByFDID(uint32_t fileDataID)
     if (entries.empty())
         throw std::runtime_error("File not found in root");
 
-    return OpenFileByCKey(entries[0].md5);
+    return OpenFileByCKey(MD5ToHexLower(entries[0].md5));
 }
 
 std::vector<uint8_t> BuildInstance::OpenFileByCKey(const std::string& cKey)
@@ -209,10 +209,10 @@ std::vector<uint8_t> BuildInstance::OpenFileByCKey(const std::vector<uint8_t>& c
         throw std::runtime_error("Encoding not loaded");
 
     auto encRes = encoding_->FindContentKey(cKey);
-    if (!encRes)
+    if (encRes.empty())
         throw std::runtime_error("File not found in encoding");
 
-    return OpenFileByEKey(encRes[0], encRes.DecodedFileSize);
+    return OpenFileByEKey(encRes.key(0), encRes.decodedFileSize);
 }
 
 std::vector<uint8_t> BuildInstance::OpenFileByEKey(const std::string& eKey,
@@ -231,27 +231,28 @@ std::vector<uint8_t> BuildInstance::OpenFileByEKey(const std::vector<uint8_t>& e
     std::vector<uint8_t> data;
 
     if (offset == -1) {
-        auto fe = fileIndex_->GetIndexInfo(eKey);
-        if (fe.size == -1) {
-            std::cout << "Warning: EKey " << ToHexStringLower(eKey)
+
+        auto [offset, size, arcIdx] = fileIndex_->GetIndexInfo(eKey);
+        if (size == -1) {
+            std::cout << "Warning: EKey " << bytesToHexLower(eKey)
                       << " not found in group or file index and might not be available on CDN.\n";
             data = cdn_->GetFile("data",
-                                 ToHexStringLower(eKey),
+                                 bytesToHexLower(eKey),
                                  0,
                                  decodedSize,
                                  true);
         }
         else {
             data = cdn_->GetFile("data",
-                                 ToHexStringLower(eKey),
-                                 fe.size,
+                                 bytesToHexLower(eKey),
+                                 size,
                                  decodedSize,
                                  true);
         }
     }
     else {
-        data = cdn_->GetFileFromArchive(ToHexStringLower(eKey),
-                                        cdnConfig_->GetValues().at("archives")[archiveIdx],
+        data = cdn_->GetFileFromArchive(bytesToHexLower(eKey),
+                                        cdnConfig_->Values.at("archives")[archiveIdx],
                                         offset,
                                         size,
                                         decodedSize,

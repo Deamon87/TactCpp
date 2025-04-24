@@ -9,31 +9,15 @@ using namespace TACTSharp;
 // static empty
 const EncodingResult EncodingInstance::Zero = EncodingResult{};
 
-EncodingInstance::EncodingInstance(const std::wstring& filePath)
-  : _filePath(filePath)
-{
+//If fileSize is -1 - it's size is take defacto
+EncodingInstance::EncodingInstance(const std::string &filePath, int fileSize) : _filePath(filePath) {
     // open file
-    _hFile = ::CreateFileW(filePath.c_str(), GENERIC_READ,
-                           FILE_SHARE_READ, nullptr,
-                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (_hFile == INVALID_HANDLE_VALUE)
-        throw std::runtime_error("CreateFileW failed");
+    m_file = std::make_shared<MemoryMappedFile>(filePath);
 
-    // get size
-    LARGE_INTEGER sz;
-    if (!GetFileSizeEx(_hFile, &sz))
-        throw std::runtime_error("GetFileSizeEx failed");
-    _fileSize = static_cast<size_t>(sz.QuadPart);
-
-    // create mapping
-    _hMapping = ::CreateFileMappingW(_hFile, nullptr,
-                                     PAGE_READONLY, 0, 0, nullptr);
-    if (!_hMapping)
-        throw std::runtime_error("CreateFileMappingW failed");
+    _fileSize = fileSize == -1 ? m_file->size() : fileSize;
 
     // map view
-    _view = static_cast<const uint8_t*>(
-              ::MapViewOfFile(_hMapping, FILE_MAP_READ, 0,0,0));
+    _view = static_cast<const uint8_t *>(m_file->data());
     if (!_view)
         throw std::runtime_error("MapViewOfFile failed");
 
@@ -45,9 +29,7 @@ EncodingInstance::EncodingInstance(const std::wstring& filePath)
 }
 
 EncodingInstance::~EncodingInstance() {
-    if (_view)    UnmapViewOfFile(_view);
-    if (_hMapping) CloseHandle(_hMapping);
-    if (_hFile)    CloseHandle(_hFile);
+
 }
 
 void EncodingInstance::ReadHeader(uint8_t& version, EncodingSchema& schema) {
