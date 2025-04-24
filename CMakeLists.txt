@@ -64,6 +64,8 @@ add_executable(TactCpp main.cpp utils/KeyService.cpp
 		IndexInstance.h
 		InstallInstance.cpp
 		InstallInstance.h
+		BuildInstance.cpp
+		BuildInstance.h
 )
 
 target_link_libraries(TactCpp cpr::cpr)

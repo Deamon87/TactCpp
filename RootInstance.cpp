@@ -6,11 +6,6 @@
 
 using namespace std;
 
-// MD5 ctor: copy 16 bytes
-RootInstance::MD5::MD5(const uint8_t* src) {
-    copy(src, src + Length, data);
-}
-
 // Helpers to read little-endian integers
 uint32_t RootInstance::ReadUInt32LE(const vector<uint8_t>& data, size_t offset) {
     return uint32_t(data[offset])
@@ -114,7 +109,8 @@ RootInstance::RootInstance(const string& path, const Settings& settings)
                 entry.fileDataID = fid;
                 fileIndex = fid + 1;
 
-                entry.md5 = MD5(&m_data[offCHash]);
+                std::copy_n(entry.md5.data(), 16, m_data.data() + offCHash);
+
                 offCHash += strideCHash;
 
                 if (doLookup) {

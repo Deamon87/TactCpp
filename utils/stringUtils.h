@@ -54,7 +54,7 @@ inline uint8_t hexCharToInt(char c) {
     throw std::invalid_argument(std::string("Invalid hex digit: ") + c);
 }
 
-std::vector<uint8_t> hexToBytes(const std::string& hex) {
+inline std::vector<uint8_t> hexToBytes(const std::string& hex) {
     size_t len = hex.length();
     if (len % 2 != 0) {
         throw std::invalid_argument("Hex string must have even length");

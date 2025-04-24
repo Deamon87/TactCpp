@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <array>
 #include <unordered_map>
 
 class RootInstance {
@@ -55,12 +56,7 @@ public:
         NoCompression    = 0x80000000
     };
 
-    struct MD5 {
-        static constexpr size_t Length = 16;
-        uint8_t data[Length];
-        MD5() = default;
-        explicit MD5(const uint8_t* src);
-    };
+    typedef std::array<uint8_t, 16> MD5;
 
     struct RootEntry {
         ContentFlags contentFlags;
