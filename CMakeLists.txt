@@ -82,6 +82,6 @@ target_link_libraries(TactCppLib cpr::cpr)
 target_link_libraries(TactCppLib zlib)
 
 
-add_executable(TactCpp src/main.cpp)
+add_executable(TACTToolCpp src/main.cpp)
 
-target_link_libraries(TactCpp TactCppLib)
+target_link_libraries(TACTToolCpp TactCppLib)

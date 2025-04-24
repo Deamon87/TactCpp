@@ -1,0 +1,7 @@
+.idea
+cache
+venv
+.vs
+out/build
+CMakeSettings.json
+cmake-build-*
