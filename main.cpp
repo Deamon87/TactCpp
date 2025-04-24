@@ -98,8 +98,10 @@ void HandleFDID(const std::string& fdidStr, const std::optional<std::string>& fi
                   << ", CKey not found in encoding.\n";
         return;
     }
-    ExtractionTarget t{ fileKeys.key(0), fileKeys.decodedFileSize,
-                      filename.value_or(fdidStr) };
+    auto fileNameToSave = filename.value_or(fdidStr);
+    fileNameToSave = fileNameToSave.empty() ? fdidStr : fileNameToSave;
+
+    ExtractionTarget t{ fileKeys.key(0), fileKeys.decodedFileSize, fileNameToSave};
     std::lock_guard lk(extractionMutex);
     extractionTargets.push_back(std::move(t));
 }
@@ -323,11 +325,13 @@ int main(int argc, char* argv[]) {
             [&](auto &t){
                 auto hex = toHexLower(t.eKey);
                 std::cout << "Extracting " << hex
-                          << " to " << t.fileName << "\n";
+                          << " to " << t.fileName << std::endl;;
                 try {
                     auto data = build.OpenFileByEKey(t.eKey, t.decodedSize);
                     fs::path out = t.fileName;
-                    fs::create_directories(out.parent_path());
+                    if (!out.parent_path().empty()) {
+                        fs::create_directories(out.parent_path());
+                    }
                     std::ofstream ofs(out, std::ios::binary);
                     ofs.write(reinterpret_cast<const char*>(data.data()), data.size());
                 } catch (std::exception& e) {

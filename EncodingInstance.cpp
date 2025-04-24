@@ -147,7 +147,7 @@ TableSchema::ResolvePage(const uint8_t* fileData, size_t fileSize,
     if (it == endIt)
         return { nullptr, 0 };
 
-    size_t index = std::distance(beginIt, it);
+    size_t index = std::distance(beginIt, --it);
     size_t pageOff = pages.start + index * pageSize;
 
     if (pageOff + pageSize > fileSize)

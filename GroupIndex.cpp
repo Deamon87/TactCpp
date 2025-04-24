@@ -263,9 +263,9 @@ std::string GroupIndex::Generate(
 
     // compute footer-hash (next 8 bytes)
     {
-        auto md = hexToBytes(md5(buf.data()+footerStart, 20));
+        auto md = hexToBytes(md5(buf.data()+totalSize-20, 20));
 
-        std::memcpy(buf.data() + footerStart + 20, md.data(), footer.hashBytes);
+        std::memcpy(buf.data() + totalSize - 8, md.data(), footer.hashBytes);
     }
 
     // compute full-footer (filename) MD5

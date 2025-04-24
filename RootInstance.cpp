@@ -126,7 +126,7 @@ RootInstance::RootInstance(const string& path, const Settings& settings)
                 entry.fileDataID = fid;
                 fileIndex = fid + 1;
 
-                std::copy_n(entry.md5.data(), 16, m_data.data() + offCHash);
+                std::copy_n(m_data.data() + offCHash, 16, entry.md5.data());
 
                 offCHash += strideCHash;
 

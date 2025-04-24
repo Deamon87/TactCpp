@@ -69,7 +69,8 @@ private:
 
     std::vector<std::string> cdnServers_;
     std::unordered_map<std::string, std::mutex> fileLocks_;
-    std::mutex cdnMutex_;
+    std::mutex cdnLoadingMutex_;
+    std::mutex cdnSettingMutex_;
     bool hasLocal_ = false;
     std::unordered_map<uint8_t, std::unique_ptr<CASCIndexInstance>> cascIndices_;
     Settings settings_;

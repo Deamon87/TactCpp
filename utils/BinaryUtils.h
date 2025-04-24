@@ -42,9 +42,12 @@ inline uint32_t ReadInt32LE(const uint8_t* ptr) {
 
 // Read big-endian unsigned 40-bit
 inline uint64_t ReadUInt40BE(const uint8_t* ptr) {
-    uint64_t hi = ReadUInt16BE(ptr);
-    uint64_t lo = ReadInt32BE(ptr + 2) & 0xFFFFFFFFULL;
-    return (hi << 32) | lo;
+
+    return  (uint64_t(ptr[0]) << 32) |
+            (uint64_t(ptr[1]) << 24) |
+            (uint64_t(ptr[2]) << 16) |
+            (uint64_t(ptr[3]) <<  8) |
+             uint64_t(ptr[4]);
 }
 
 // Read a NUL-terminated string from ptr, returns length (without NUL)

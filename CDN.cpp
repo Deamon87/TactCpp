@@ -58,7 +58,7 @@ void CDN::OpenLocal() {
 }
 
 void CDN::SetCDNs(const std::vector<std::string> &cdns) {
-    std::lock_guard<std::mutex> lock(cdnMutex_);
+    std::lock_guard<std::mutex> lock(cdnSettingMutex_);
     for (auto &url: cdns) {
         if (std::find(cdnServers_.begin(), cdnServers_.end(), url) == cdnServers_.end())
             cdnServers_.push_back(url);
@@ -128,7 +128,7 @@ std::string CDN::GetDecodedFilePath(const std::string &type,
                                     const std::string &hash,
                                     uint64_t compressedSize,
                                     uint64_t decompressedSize) {
-    std::filesystem::path path = settings_.CacheDir / productDirectory_ / type / hash;
+    std::filesystem::path path = settings_.CacheDir / productDirectory_ / type / (hash + ".decoded");
     if (std::filesystem::exists(path))
         return path.string();
 
@@ -162,13 +162,13 @@ void CDN::LoadCDNs() {
     int HostsIndex = -1;
     auto headerTokens = tokenize(lines[0], "|");
     for (int i = 0 ; i < headerTokens.size(); i++) {
-        if (startsWith(headerTokens[0], "Name")) {
+        if (startsWith(headerTokens[i], "Name")) {
             NameIndex = i;
         }
-        if (startsWith(headerTokens[0], "Path")) {
+        if (startsWith(headerTokens[i], "Path")) {
             PathIndex = i;
         }
-        if (startsWith(headerTokens[0], "Hosts")) {
+        if (startsWith(headerTokens[i], "Hosts")) {
             HostsIndex = i;
         }
     }
@@ -280,8 +280,9 @@ std::vector<uint8_t> CDN::DownloadFile(
 
     // 4) Ensure CDN list is loaded
     {
-        std::scoped_lock lock(cdnMutex_);
-        if (cdnServers_.empty()) LoadCDNs();
+        std::scoped_lock lock(cdnLoadingMutex_);
+        if (cdnServers_.empty())
+            LoadCDNs();
     }
 
     // 5) Download from CDN(s)
@@ -293,7 +294,7 @@ std::vector<uint8_t> CDN::DownloadFile(
 
         std::string url = std::format("http://{}/{}/{}/{}/{}/{}", server, productDirectory_, fileType, seg1, seg2, resource);
 
-        std::cout << "Downloading " << key << " from " << url << '\n';
+        std::cout << "Downloading " << key << " (expected size " << expectedSize << ") from " << url << std::endl << std::flush;
 
         // Build request
         cpr::Session session;
@@ -306,7 +307,7 @@ std::vector<uint8_t> CDN::DownloadFile(
         }
 
         cpr::Response r = session.Get();
-        if (r.status_code == 200) {
+        if (r.status_code == 200 || r.status_code == 206) {
             // Write to cache
             if (archive.empty()) {
                 std::scoped_lock lock(fileLocks_[cachePath.string()]);
