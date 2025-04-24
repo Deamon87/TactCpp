@@ -27,7 +27,7 @@ struct TableSchema {
     // xKey: pointer to the key bytes to lookup
     // keyLen: length of xKey
     // returns a pointer+length pair for the resolved page
-    std::pair<const uint8_t*, size_t>
+    std::pair<const uint8_t*, int64_t>
     ResolvePage(const uint8_t* fileData, size_t fileSize,
                 const uint8_t* xKey, size_t keyLen) const;
 };
@@ -71,6 +71,7 @@ public:
 
     // lookup cKey -> (count, encKeys, decodedSize)
     EncodingResult FindContentKey(const std::vector<uint8_t>& cKeyTarget) const;
+    EncodingResult FindContentKey(const std::array<uint8_t, 16>& cKeyTarget) const;
 
     // lookup eKey -> (eSpec string, encodedFileSize)
     std::pair<std::string, uint64_t>
@@ -78,6 +79,7 @@ public:
 
 private:
     void ReadHeader(uint8_t& version, EncodingSchema& schema);
+    EncodingResult FindContentKey(const uint8_t *ptr, int keyLength) const;
 
     std::string           _filePath;
     size_t                _fileSize;

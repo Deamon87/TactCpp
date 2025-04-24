@@ -64,10 +64,18 @@ void EncodingInstance::ReadHeader(uint8_t& version, EncodingSchema& schema) {
         TableSchema{eHdr, ePages, size_t(hashE)+0x10, size_t(ePgSzK)}
     };
 }
+EncodingResult EncodingInstance::FindContentKey(const std::array<uint8_t, 16>& cKeyTarget) const {
+    return FindContentKey(cKeyTarget.data(), cKeyTarget.size());
+}
 
-EncodingResult EncodingInstance::FindContentKey(const std::vector<uint8_t>& target) const {
+EncodingResult EncodingInstance::FindContentKey(const std::vector<uint8_t>& cKeyTarget) const {
+    return FindContentKey(cKeyTarget.data(), cKeyTarget.size());
+}
+
+EncodingResult EncodingInstance::FindContentKey(const uint8_t *keyPtr, int keyLength) const {
     auto [ptr, sz] = _schema.cEKey.ResolvePage(_view, _fileSize,
-                                               target.data(), target.size());
+                                               keyPtr, keyLength);
+
     while (sz > 0) {
         uint8_t cnt = ptr[0];
         size_t recordLen = 1 + 5 + _schema.cKeySize + cnt * _schema.eKeySize;
@@ -76,7 +84,7 @@ EncodingResult EncodingInstance::FindContentKey(const std::vector<uint8_t>& targ
         // read fileSize
         uint64_t decSize = ReadUInt40BE(rec);
         const uint8_t* cKey = rec + 5;
-        if (SequenceEqual(cKey, target.data(), _schema.cKeySize)) {
+        if (SequenceEqual(cKey, keyPtr, _schema.cKeySize)) {
             // copy encoding keys
             const uint8_t* eKeys = cKey + _schema.cKeySize;
             std::vector<uint8_t> keys(eKeys, eKeys + cnt*_schema.eKeySize);
@@ -121,7 +129,7 @@ EncodingInstance::GetESpec(const std::vector<uint8_t>& target) {
 }
 
 // TableSchema implementation
-std::pair<const uint8_t*,size_t>
+std::pair<const uint8_t*, int64_t>
 TableSchema::ResolvePage(const uint8_t* fileData, size_t fileSize,
                          const uint8_t* xKey, size_t keyLen) const
 {

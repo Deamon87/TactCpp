@@ -3,7 +3,9 @@ project(TactCpp)
 
 include(FetchContent)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 #cpr
 SET(CMAKE_USE_LIBSSH2 0)
@@ -71,6 +73,9 @@ add_executable(TactCpp main.cpp utils/KeyService.cpp
 		GroupIndex.h
 		wow/WoWRootFlags.h
 		BuildInfo.h
+		3rdparty/cxxopts.hpp
+		utils/TactConfigParser.cpp
+		utils/TactConfigParser.h
 )
 
 target_link_libraries(TactCpp cpr::cpr)

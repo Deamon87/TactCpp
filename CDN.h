@@ -51,6 +51,7 @@ public:
 
     // Flip product directory after LoadCDNs
     const std::string& ProductDirectory() const { return productDirectory_; }
+    void setProductDirectory(const std::string& value) { productDirectory_ = value; }
 
 private:
     void LoadCDNs();
@@ -67,7 +68,7 @@ private:
     bool TryGetLocalFile(const std::string& eKey, std::vector<uint8_t>& outData);
 
     std::vector<std::string> cdnServers_;
-    std::unordered_map<std::string, std::shared_ptr<std::mutex>> fileLocks_;
+    std::unordered_map<std::string, std::mutex> fileLocks_;
     std::mutex cdnMutex_;
     bool hasLocal_ = false;
     std::unordered_map<uint8_t, std::unique_ptr<CASCIndexInstance>> cascIndices_;

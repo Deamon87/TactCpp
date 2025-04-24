@@ -126,7 +126,7 @@ std::string GroupIndex::Generate(
             std::string indexPath;
 
             // check local BaseDir
-            if (!settings.BaseDir.has_value()) {
+            if (settings.BaseDir.has_value()) {
                 std::filesystem::path p = std::filesystem::path(settings.BaseDir.value()) /
                              "Data" / "indices" / (name + ".index");
                 if (std::filesystem::exists(p)) {

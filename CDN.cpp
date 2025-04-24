@@ -128,15 +128,15 @@ std::string CDN::GetDecodedFilePath(const std::string &type,
                                     const std::string &hash,
                                     uint64_t compressedSize,
                                     uint64_t decompressedSize) {
-    auto path = GetFilePath(type, hash + ".decoded", compressedSize);
+    std::filesystem::path path = settings_.CacheDir / productDirectory_ / type / hash;
     if (std::filesystem::exists(path))
-        return path;
+        return path.string();
 
     auto data = DownloadFile(type, hash, "", 0, compressedSize);
     auto decoded = BLTE::Decode(data, decompressedSize);
     std::ofstream ofs(path, std::ios::binary);
     ofs.write(reinterpret_cast<const char *>(decoded.data()), decoded.size());
-    return path;
+    return path.string();
 }
 
 void CDN::LoadCDNs() {
@@ -229,15 +229,16 @@ std::vector<uint8_t> CDN::DownloadFile(
             if (archive.empty()) {
                 // Original local resolution logic for data/config
                 if (type == "data" && key.rfind(".index") == key.size() - 6) {
-                    std::filesystem::path p = std::filesystem::path(settings_.BaseDir.value()) / "Data" / "indices" / key;
-                    if (std::filesystem::exists(p)) {
+                    std::filesystem::path p = std::filesystem::path(settings_.BaseDir.value_or("")) / "Data" / "indices" / key;
+                    if (settings_.BaseDir.has_value() && std::filesystem::exists(p)) {
                         return readFile(p.string());
                     }
                 } else if (type == "config" && key.size() >= 4) {
                     std::filesystem::path p =
-                        std::filesystem::path(settings_.BaseDir.value()) / "Data" / "config" /
+                        std::filesystem::path(settings_.BaseDir.value_or("")) / "Data" / "config" /
                             key.substr(0,2) / key.substr(2,2) / key;
-                    if (std::filesystem::exists(p)) {
+
+                    if (settings_.BaseDir.has_value() && std::filesystem::exists(p)) {
                         return readFile(p.string());
                     }
                 } else if (TryGetLocalFile(key, data)) {
@@ -250,7 +251,7 @@ std::vector<uint8_t> CDN::DownloadFile(
                 }
             }
         } catch (const std::exception& e) {
-            std::cerr << "Failed to read local file: " << e.what() << '\n';
+            std::cerr << "Failed to read local file: " << e.what() << std::endl;
         }
     }
 
@@ -259,8 +260,6 @@ std::vector<uint8_t> CDN::DownloadFile(
     std::filesystem::path cacheDir = std::filesystem::path(settings_.CacheDir) / productDirectory_ / fileType;
     std::filesystem::path cachePath = cacheDir / key;
 
-    // Ensure a lock exists for this path
-    fileLocks_.try_emplace(cachePath.string());
 
     // 3) Check cache validity
     if (std::filesystem::exists(cachePath)) {
@@ -269,7 +268,7 @@ std::vector<uint8_t> CDN::DownloadFile(
             ? (expectedSize == 0 || size == expectedSize)
             : (static_cast<uint64_t>(size) >= static_cast<uint64_t>(offset) + expectedSize);
         if (valid) {
-            std::scoped_lock<std::mutex> lock(*fileLocks_[cachePath.string()]);
+            std::scoped_lock<std::mutex> lock(fileLocks_[cachePath.string()]);
             std::vector<uint8_t> buf(size);
             std::ifstream in(cachePath, std::ios::binary);
             in.read(reinterpret_cast<char*>(buf.data()), buf.size());
@@ -310,7 +309,7 @@ std::vector<uint8_t> CDN::DownloadFile(
         if (r.status_code == 200) {
             // Write to cache
             if (archive.empty()) {
-                std::scoped_lock lock(*fileLocks_[cachePath.string()]);
+                std::scoped_lock lock(fileLocks_[cachePath.string()]);
                 std::filesystem::create_directories(cacheDir);
                 std::ofstream out(cachePath, std::ios::binary);
                 out.write(r.text.c_str(), r.text.size());

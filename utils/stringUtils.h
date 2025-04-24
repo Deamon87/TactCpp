@@ -6,6 +6,8 @@
 #define STRINGUTILS_H
 
 #include <string>
+#include <stdexcept>
+#include <cstdint>
 
 
 inline bool startsWith(std::string_view str, std::string_view prefix)

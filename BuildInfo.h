@@ -34,7 +34,7 @@ public:
         std::unordered_map<std::string, std::string> folderMap;
 
         // Scan for .flavor.info files to build folderMap
-        for (const auto& dirEntry : std::filesystem::recursive_directory_iterator(settings.BaseDir)) {
+        for (const auto& dirEntry : std::filesystem::recursive_directory_iterator(settings.BaseDir.value())) {
             if (!dirEntry.is_regular_file()) continue;
             const auto& filePath = dirEntry.path();
             if (filePath.string().ends_with(".flavor.info")) {

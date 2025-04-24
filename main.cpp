@@ -11,10 +11,14 @@
 #include <cctype>
 #include <chrono>
 #include <execution>
-#include "cxxopts.hpp"
+#include <ranges>
+
+#include "3rdparty/cxxopts.hpp"
 #include "BuildInstance.h"
 #include "BuildInfo.h"
 #include "utils/Jenkins96.h"
+#include "utils/stringUtils.h"
+#include "utils/TactConfigParser.h"
 
 namespace fs = std::filesystem;
 using namespace TACTSharp;
@@ -32,15 +36,6 @@ static std::string Input, Output;
 static std::vector<ExtractionTarget> extractionTargets;
 static std::mutex extractionMutex;
 static BuildInstance build;
-
-static std::vector<uint8_t> hexToBytes(const std::string& hex) {
-    std::vector<uint8_t> bytes;
-    bytes.reserve(hex.size() / 2);
-    for (size_t i = 0; i < hex.size(); i += 2) {
-        bytes.push_back(static_cast<uint8_t>(std::stoul(hex.substr(i,2), nullptr, 16)));
-    }
-    return bytes;
-}
 
 static std::string toHexLower(const std::vector<uint8_t>& data) {
     static constexpr char tbl[] = "0123456789abcdef";
@@ -74,12 +69,12 @@ void HandleCKey(const std::string& cKeyHex, const std::optional<std::string>& fi
         return;
     }
     auto cKeyBytes = hexToBytes(cKeyHex);
-    auto fileKeys = build.Encoding()->FindContentKey(cKeyBytes);
-    if (!fileKeys) {
+    auto fileKeys = build.GetEncoding()->FindContentKey(cKeyBytes);
+    if (fileKeys.empty()) {
         std::cout << "Skipping " << cKeyHex << ", CKey not found in encoding.\n";
         return;
     }
-    ExtractionTarget t{ fileKeys->at(0), fileKeys->DecodedFileSize, filename.value_or(cKeyHex) };
+    ExtractionTarget t{ fileKeys.key(0), fileKeys.decodedFileSize, filename.value_or(cKeyHex) };
     std::lock_guard lk(extractionMutex);
     extractionTargets.push_back(std::move(t));
 }
@@ -92,21 +87,31 @@ void HandleFDID(const std::string& fdidStr, const std::optional<std::string>& fi
                   << ", invalid format (expected unsigned integer).\n";
         return;
     }
-    auto entries = build.Root()->GetEntriesByFDID(fdid);
+    auto entries = build.GetRoot()->GetEntriesByFDID(fdid);
     if (entries.empty()) {
         std::cout << "Skipping FDID " << fdidStr << ", not found in root.\n";
         return;
     }
-    auto fileKeys = build.Encoding()->FindContentKey(entries[0].md5);
-    if (!fileKeys) {
+    auto fileKeys = build.GetEncoding()->FindContentKey(entries[0].md5);
+    if (fileKeys.empty()) {
         std::cout << "Skipping FDID " << fdidStr
                   << ", CKey not found in encoding.\n";
         return;
     }
-    ExtractionTarget t{ fileKeys->at(0), fileKeys->DecodedFileSize,
+    ExtractionTarget t{ fileKeys.key(0), fileKeys.decodedFileSize,
                       filename.value_or(fdidStr) };
     std::lock_guard lk(extractionMutex);
     extractionTargets.push_back(std::move(t));
+}
+
+bool ichar_equals(char a, char b)
+{
+    return std::tolower(static_cast<unsigned char>(a)) ==
+           std::tolower(static_cast<unsigned char>(b));
+}
+bool iequals(std::string_view lhs, std::string_view rhs)
+{
+    return std::ranges::equal(lhs, rhs, ichar_equals);
 }
 
 void HandleFileName(const std::string& fname, const std::optional<std::string>& outName) {
@@ -114,14 +119,20 @@ void HandleFileName(const std::string& fname, const std::optional<std::string>& 
     auto normName = fname;
     std::replace(normName.begin(), normName.end(), '/', '\\');
 
-    auto entries = build.GetInstall().EntriesByName(normName);
+    auto entries =
+        build.GetInstall()->getEntries() |
+        std::views::filter([&](auto& entry) {
+            return iequals(entry.name, normName);
+        }) |
+        std::ranges::to<std::vector>();
+
     if (entries.empty()) {
         // fallback via Jenkins96 lookup or listfile...
 
         auto hash = Jenkins96::ComputeHash(normName, true);
         auto byLookup = build.GetRoot()->GetEntriesByLookup(hash);
         if (!byLookup.empty()) {
-            HandleCKey(toHexLower(byLookup[0].md5), fname);
+            HandleCKey(MD5ToHexLower(byLookup[0].md5), fname);
             return;
         }
         // if (build.GetSettings().ListfileFallback) {
@@ -144,23 +155,24 @@ void HandleFileName(const std::string& fname, const std::optional<std::string>& 
     }
 
     std::vector<uint8_t> targetMd5 = entries[0].md5;
-    if (entries.size()>1) {
-        auto usEntries = std::find_if(entries.begin(), entries.end(),
-            [](auto &e){ return e.tags.count("4=US"); });
+    if (entries.size() > 1) {
+        auto usEntries =
+            std::find_if(entries.begin(), entries.end(), [](auto &e) {
+                return !(e.tags | std::views::filter([](const auto &tag) { return tag == "4=US";})).empty();
+            });
         if (usEntries!=entries.end()) {
-            std::cout << "Multiple results for " << fname
-                      << ", using US version..\n";
+            std::cout << "Multiple results for " << fname << ", using US version..\n";
             targetMd5 = usEntries->md5;
         } else {
-            std::cout << "Multiple results for " << fname
-                      << ", using first result..\n";
+            std::cout << "Multiple results for " << fname<< ", using first result..\n";
         }
     }
 
     auto fileKeys = build.GetEncoding()->FindContentKey(targetMd5);
-    if (!fileKeys)
+    if (fileKeys.empty())
         throw std::runtime_error("EKey not found in encoding");
-    ExtractionTarget t{ fileKeys->at(0), fileKeys->DecodedFileSize,
+
+    ExtractionTarget t{ fileKeys.key(0), fileKeys.decodedFileSize,
                        outName.value_or(fname) };
     std::lock_guard lk(extractionMutex);
     extractionTargets.push_back(std::move(t));
@@ -210,13 +222,13 @@ int main(int argc, char* argv[]) {
             return 0;
         }
 
-        build.Settings().BuildConfig = res["buildconfig"].as<std::string>();
-        build.Settings().CDNConfig   = res["cdnconfig"].as<std::string>();
-        build.Settings().Product     = res["product"].as<std::string>();
-        build.Settings().Region      = res["region"].as<std::string>();
-        build.Settings().Locale      = res["locale"].as<std::string>();
-        if (res.count("inputvalue"))  Input  = res["inputvalue"].as<std::string>();
-        if (res.count("output"))      Output = res["output"].as<std::string>();
+        if (res.count("buildconfig"))build.GetSettings()->BuildConfig = res["buildconfig"].as<std::string>();
+        if (res.count("cdnconfig"))  build.GetSettings()->CDNConfig   = res["cdnconfig"].as<std::string>();
+        if (res.count("product"))    build.GetSettings()->Product     = res["product"].as<std::string>();
+        if (res.count("region"))     build.GetSettings()->Region      = res["region"].as<std::string>();
+        if (res.count("locale"))     build.GetSettings()->Locale      = RootInstance::StringToLocaleFlag.at(res["locale"].as<std::string>());
+        if (res.count("inputvalue")) Input  = res["inputvalue"].as<std::string>();
+        if (res.count("output"))     Output = res["output"].as<std::string>();
 
         if (res.count("mode")) {
             auto m = res["mode"].as<std::string>();
@@ -237,26 +249,49 @@ int main(int argc, char* argv[]) {
 
         // Load configs – from basedir or patch service
         if (res.count("basedir")) {
-            build.Settings().BaseDir = res["basedir"].as<std::string>();
-            fs::path bp = fs::path(build.Settings().BaseDir) / ".build.info";
+            build.GetSettings()->BaseDir = res["basedir"].as<std::string>();
+
+            fs::path bp = fs::path(build.GetSettings()->BaseDir.value()) / ".build.info";
             if (!fs::exists(bp)) throw std::runtime_error("No .build.info in basedir");
-            BuildInfo bi(bp.string(), build.Settings(), build.CDN());
-            // pick matching entry...
-            bi.PopulateSettings(build.Settings(), build.CDN());
+            BuildInfo bi(bp.string(), *build.GetSettings(), *build.GetCDN());
+
+
+            auto matchedEntries = bi.Entries | std::views::filter([](const auto &rng) {
+                return rng.Product == build.GetSettings()->Product;
+            }) | std::views::take(1) | std::ranges::to<std::vector>();
+
+            if (matchedEntries.empty())
+                throw std::runtime_error("No build found for product " + build.GetSettings()->Product + " in .build.info, are you sure this product is installed?");
+
+            auto const &buildInfoEntry = matchedEntries[0];
+            build.GetSettings()->BuildConfig = buildInfoEntry.BuildConfig;
+            build.GetSettings()->CDNConfig = buildInfoEntry.CDNConfig;
+            build.GetCDN()->setProductDirectory(buildInfoEntry.CDNPath);
+
         } else {
-            build.LoadPatchServiceConfigs();
+            auto versions = build.GetCDN()->GetPatchServiceFile(build.GetSettings()->Product, "versions");
+            TactConfigParser::parse(versions, {"Region", "BuildConfig", "CDNConfig"}, [&](const auto &rec) {
+                if (build.GetSettings()->Region != rec.at("Region")) { return true;} // continue if region do no match
+
+                build.GetSettings()->BuildConfig = rec.at("BuildConfig");
+                build.GetSettings()->CDNConfig = rec.at("CDNConfig");
+
+                return false;
+            });
         }
 
-        if (build.Settings().BuildConfig.empty() || build.Settings().CDNConfig.empty()) {
+        if (build.GetSettings()->BuildConfig.value_or("").empty() || build.GetSettings()->CDNConfig.value_or("").empty()) {
             std::cerr << "Missing build or CDN config, exiting..\n";
             return 1;
         }
+
+        build.LoadConfigs(build.GetSettings()->BuildConfig.value(), build.GetSettings()->CDNConfig.value());
 
         // Load
         auto t0 = std::chrono::high_resolution_clock::now();
         build.Load();
         auto t1 = std::chrono::high_resolution_clock::now();
-        std::cout << "Build " << build.BuildConfig().Values("build-name")[0]
+        std::cout << "Build " << build.GetBuildConfig()->Values.at("build-name")[0]
                   << " loaded in "
                   << std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count()
                   << "ms\n";

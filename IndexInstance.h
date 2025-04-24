@@ -47,7 +47,6 @@ private:
 
     size_t  blockSizeBytes_, entrySize_;
     int     entriesPerBlock_, entriesInLastBlock_, numBlocks_;
-    uint32_t numElements_;
     size_t  ofsStartOfToc_, ofsEndOfTocEkeys_;
 };
 

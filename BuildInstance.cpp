@@ -13,9 +13,9 @@
 namespace fs = std::filesystem;
 
 BuildInstance::BuildInstance()
-  : settings_(std::make_shared<Settings>()),
-    cdn_(std::make_shared<CDN>(*settings_))
 {
+    settings_ = std::make_shared<Settings>();
+    cdn_ = std::make_shared<CDN>(*settings_);
 }
 
 void BuildInstance::LoadConfigs(const std::string& buildConfigPath,
@@ -77,13 +77,12 @@ void BuildInstance::Load()
     }
     else {
         const auto& grp = itGroup->second;
-        fs::path idxOnDisk = fs::path(settings_->BaseDir.value()) / "Data" / "indices" / (grp[0] + ".index");
-        if (fs::exists(idxOnDisk)) {
+        fs::path idxOnDisk = fs::path(settings_->BaseDir.value_or("")) / "Data" / "indices" / (grp[0] + ".index");
+        if (settings_->BaseDir.has_value() && fs::exists(idxOnDisk)) {
             groupIndex_ = std::make_shared<IndexInstance>(idxOnDisk.string());
         }
         else {
-            auto idxCache =
-                fs::path(settings_->CacheDir.string()) / cdn_->ProductDirectory() / "data" / (grp[0] + ".index");
+            auto idxCache = fs::path(settings_->CacheDir.string()) / cdn_->ProductDirectory() / "data" / (grp[0] + ".index");
             if (!fs::exists(idxCache)) {
                 GroupIndex regen;
                 regen.Generate(cdn_, *settings_, grp[0], cdnConfig_->Values.at("archives"));

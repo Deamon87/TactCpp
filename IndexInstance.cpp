@@ -33,8 +33,8 @@ IndexInstance::IndexInstance(const std::string& path, int16_t archiveIndex)
     entrySize_          = footer_.keyBytes + footer_.sizeBytes + footer_.offsetBytes;
     entriesPerBlock_    = static_cast<int>(blockSizeBytes_ / entrySize_);
 
-    numBlocks_          = static_cast<int>(std::ceil(static_cast<double>(numElements_) / entriesPerBlock_));
-    entriesInLastBlock_ = static_cast<int>(numElements_) - (numBlocks_ - 1) * entriesPerBlock_;
+    numBlocks_          = static_cast<int>(std::ceil(static_cast<double>(footer_.numElements) / entriesPerBlock_));
+    entriesInLastBlock_ = static_cast<int>(footer_.numElements) - (numBlocks_ - 1) * entriesPerBlock_;
 
     ofsStartOfToc_    = static_cast<size_t>(numBlocks_) * blockSizeBytes_;
     ofsEndOfTocEkeys_ = ofsStartOfToc_ + static_cast<size_t>(footer_.keyBytes) * numBlocks_;

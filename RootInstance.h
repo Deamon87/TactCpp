@@ -14,6 +14,8 @@ class RootInstance {
 public:
     typedef std::array<uint8_t, 16> MD5;
 
+    static const std::unordered_map<std::string, RootWoW::LocaleFlags> StringToLocaleFlag;
+
     struct RootEntry {
         RootWoW::ContentFlags contentFlags;
         RootWoW::LocaleFlags  localeFlags;

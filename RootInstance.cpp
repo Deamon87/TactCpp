@@ -6,6 +6,23 @@
 
 using namespace std;
 
+const std::unordered_map<std::string, RootWoW::LocaleFlags> RootInstance::StringToLocaleFlag = {
+    {"dede", RootWoW::LocaleFlags::deDE},
+    {"enus", RootWoW::LocaleFlags::enUS},
+    {"engb", RootWoW::LocaleFlags::enGB},
+    {"ruru", RootWoW::LocaleFlags::ruRU},
+    {"zhcn", RootWoW::LocaleFlags::zhCN},
+    {"zhtw", RootWoW::LocaleFlags::zhTW},
+    {"entw", RootWoW::LocaleFlags::enTW},
+    {"eses", RootWoW::LocaleFlags::esES},
+    {"esmx", RootWoW::LocaleFlags::esMX},
+    {"frfr", RootWoW::LocaleFlags::frFR},
+    {"itit", RootWoW::LocaleFlags::itIT},
+    {"kokr", RootWoW::LocaleFlags::koKR},
+    {"ptbr", RootWoW::LocaleFlags::ptBR},
+    {"ptpt", RootWoW::LocaleFlags::ptPT},
+};
+
 // Helpers to read little-endian integers
 uint32_t RootInstance::ReadUInt32LE(const vector<uint8_t>& data, size_t offset) {
     return uint32_t(data[offset])
