@@ -47,4 +47,29 @@ inline std::vector<std::string> tokenizeAndFilter(std::string const &str, const 
     return out;
 }
 
+inline uint8_t hexCharToInt(char c) {
+    if ('0' <= c && c <= '9') return uint8_t(c - '0');
+    if ('a' <= c && c <= 'f') return uint8_t(c - 'a' + 10);
+    if ('A' <= c && c <= 'F') return uint8_t(c - 'A' + 10);
+    throw std::invalid_argument(std::string("Invalid hex digit: ") + c);
+}
+
+std::vector<uint8_t> hexToBytes(const std::string& hex) {
+    size_t len = hex.length();
+    if (len % 2 != 0) {
+        throw std::invalid_argument("Hex string must have even length");
+    }
+
+    std::vector<uint8_t> bytes;
+    bytes.reserve(len / 2);
+
+    for (size_t i = 0; i < len; i += 2) {
+        uint8_t high = hexCharToInt(hex[i]);
+        uint8_t low  = hexCharToInt(hex[i + 1]);
+        bytes.push_back((high << 4) | low);
+    }
+
+    return bytes;
+}
+
 #endif //STRINGUTILS_H

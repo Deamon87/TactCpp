@@ -10,7 +10,6 @@
 #include <cstdint>
 #include "Settings.h"
 #include "CASCIndexInstance.h"
-#include "HttpClient.h"  // Your HTTP client wrapper
 #include "BLTE.h"
 
 class CDN {
@@ -57,20 +56,16 @@ private:
     void LoadCDNs();
     void LoadCASCIndices();
 
-    std::vector<uint8_t> DownloadFile(const std::string& type,
-                                      const std::string& hash,
-                                      uint64_t size,
-                                      const std::atomic<bool>& cancelFlag);
-
-    std::vector<uint8_t> DownloadFileFromArchiveInternal(const std::string& eKey,
-                                                          const std::string& archive,
-                                                          size_t offset,
-                                                          size_t length,
-                                                          const std::atomic<bool>& cancelFlag);
+    std::vector<uint8_t> DownloadFile(
+        const std::string& type,
+        const std::string& key,
+        const std::string& archive = "",
+        int offset = 0,
+        uint64_t expectedSize = 0,
+        int timeoutMs = 0);
 
     bool TryGetLocalFile(const std::string& eKey, std::vector<uint8_t>& outData);
 
-    HttpClient client_;
     std::vector<std::string> cdnServers_;
     std::unordered_map<std::string, std::shared_ptr<std::mutex>> fileLocks_;
     std::mutex cdnMutex_;

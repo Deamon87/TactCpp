@@ -1,15 +1,7 @@
-//
-// Created by Deamon on 4/23/2025.
-//
-
-#ifndef CASCINDEXINSTANCE_H
-#define CASCINDEXINSTANCE_H
-
 #include <windows.h>
 #include <string>
 #include <stdexcept>
 #include <tuple>
-#include <vector>
 #include <span>
 #include <cstdint>
 #include <algorithm>
@@ -47,22 +39,30 @@ private:
     size_t ofsStartOfEntries = 0;
     size_t ofsEndOfEntries = 0;
 
-    // Binary search for the first key >= needle
-    static uint8_t* LowerBoundEkey(uint8_t* begin, uint8_t* end, size_t stride,
-                                    const uint8_t* needle, size_t needleLen) {
-        size_t count = (end - begin) / stride;
-        while (count > 0) {
-            size_t step = count / 2;
-            uint8_t* it = begin + step * stride;
-            if (std::memcmp(it, needle, needleLen) < 0) {
-                begin = it + stride;
-                count -= step + 1;
-            } else {
-                count = step;
-            }
-        }
-        return begin;
-    }
+    // Iterator that steps through entries by fixed stride
+    struct EntryIterator {
+        using iterator_category = std::random_access_iterator_tag;
+        using value_type = uint8_t*;
+        using difference_type = std::ptrdiff_t;
+        using pointer = uint8_t**;
+        using reference = uint8_t*;
+
+        uint8_t* ptr;
+        size_t stride;
+
+        EntryIterator(uint8_t* p, size_t s) : ptr(p), stride(s) {}
+        reference operator*() const { return ptr; }
+        EntryIterator& operator++() { ptr += stride; return *this; }
+        EntryIterator& operator--() { ptr -= stride; return *this; }
+        EntryIterator operator++(int) { auto tmp = *this; ptr += stride; return tmp; }
+        EntryIterator& operator+=(difference_type n) { ptr += stride * n; return *this; }
+        EntryIterator operator+(difference_type n) const { return EntryIterator(ptr + stride * n, stride); }
+        EntryIterator operator-(difference_type n) const { return EntryIterator(ptr - stride * n, stride); }
+        difference_type operator-(const EntryIterator& other) const { return (ptr - other.ptr) / (difference_type)stride; }
+        bool operator<(const EntryIterator& other) const { return ptr < other.ptr; }
+        bool operator==(const EntryIterator& other) const { return ptr == other.ptr; }
+        bool operator!=(const EntryIterator& other) const { return !(*this == other); }
+    };
 
 public:
     explicit CASCIndexInstance(const std::string& path) {
@@ -109,46 +109,50 @@ public:
         if (fileHandle != INVALID_HANDLE_VALUE) CloseHandle(fileHandle);
     }
 
+    struct FileArchiveData {int archiveOffset; int archiveSize; int archiveIndex;};
+
     // Returns tuple(offset, size, archiveIndex), or (-1,-1,-1) if not found
-    std::tuple<int, int, int>
-    GetIndexInfo(std::span<const uint8_t> eKeyTarget) {
+     FileArchiveData GetIndexInfo(std::span<const uint8_t> eKeyTarget) {
         if (eKeyTarget.size() < header.entryKeyBytes)
             return {-1, -1, -1};
 
-        // Only compare the key-length prefix
         const uint8_t* key = eKeyTarget.data();
-        uint8_t* start = fileData + ofsStartOfEntries;
-        uint8_t* end   = fileData + ofsEndOfEntries;
+        // Define iterators over entries
+        EntryIterator beginIt(fileData + ofsStartOfEntries, entrySize);
+        EntryIterator endIt(fileData + ofsEndOfEntries, entrySize);
 
-        // Find lower bound
-        uint8_t* found = LowerBoundEkey(start, end,
-                                        entrySize,
-                                        key, header.entryKeyBytes);
-        if (found == start)
+        // Comparator for lower_bound
+        auto cmp = [this](uint8_t* lhs, const uint8_t* key) {
+            return std::memcmp(lhs, key, header.entryKeyBytes) < 0;
+        };
+
+        // Use std::lower_bound to find the first entry >= key
+        auto it = std::lower_bound(beginIt, endIt, key, cmp);
+        uint8_t* found = (it != endIt) ? *it : (fileData + ofsStartOfEntries);
+
+        if (found == fileData + ofsStartOfEntries)
             return {-1, -1, -1};
 
-        size_t idx = (found - start) / entrySize;
-        uint8_t* entryPtr = start + idx * entrySize;
+        size_t idx = (found - (fileData + ofsStartOfEntries)) / entrySize;
+        uint8_t* entryPtr = fileData + ofsStartOfEntries + idx * entrySize;
 
-        // Check exact match
+        // Verify exact match of key prefix
         if (std::memcmp(entryPtr, key, header.entryKeyBytes) != 0)
             return {-1, -1, -1};
 
-        // Read archive index and offsets
+        // Read archiveIndex and offsets
         uint8_t indexHigh = *(entryPtr + header.entryKeyBytes);
-        // Big-endian 32-bit
         const uint8_t* pLow = entryPtr + header.entryKeyBytes + 1;
         uint32_t indexLow = (uint32_t(pLow[0]) << 24) |
                             (uint32_t(pLow[1]) << 16) |
                             (uint32_t(pLow[2]) << 8)  |
                              uint32_t(pLow[3]);
-        // Little-endian size (4 bytes)
         const uint8_t* pSize = entryPtr + header.entryKeyBytes + 5;
         uint32_t rawSize = uint32_t(pSize[0])       |
                            (uint32_t(pSize[1]) << 8)  |
                            (uint32_t(pSize[2]) << 16) |
                            (uint32_t(pSize[3]) << 24);
-        int   dataSize = int(rawSize) - 30;
+        int dataSize = int(rawSize) - 30;
 
         int archiveIdx = (int(indexHigh) << 2) |
                          int((indexLow & 0xC0000000) >> 30);
@@ -157,6 +161,3 @@ public:
         return {archiveOff, dataSize, archiveIdx};
     }
 };
-
-
-#endif //CASCINDEXINSTANCE_H

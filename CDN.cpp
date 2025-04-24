@@ -8,6 +8,10 @@
 #include <ranges>
 #include <format>
 
+#ifndef __ANDROID__
+#include "cpr/cpr.h"
+#endif
+
 inline std::vector<uint8_t> readFile(const std::string& path) {
     // Open the file in binary mode, and position the read pointer at the end
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -25,6 +29,8 @@ inline std::vector<uint8_t> readFile(const std::string& path) {
         throw std::runtime_error("Error reading file: " + path);
     }
 
+    file.close();
+
     return buffer;
 }
 
@@ -36,7 +42,7 @@ CDN::CDN(const Settings &settings)
 }
 
 void CDN::OpenLocal() {
-    if (settings_.BaseDir.empty())
+    if (settings_.BaseDir.has_value())
         return;
 
     try {
@@ -59,9 +65,19 @@ void CDN::SetCDNs(const std::vector<std::string> &cdns) {
     }
 }
 
+std::string DownloadTextFromURL(const std::string &url) {
+    auto r = cpr::Get(cpr::Url(url));
+    if (r.status_code != 200) {
+        std::cout << "Failed to download " << url << " (code: "<< r.status_code << ")" << std::endl;
+        return "";
+    }
+
+    return r.text;
+}
+
 std::string CDN::GetPatchServiceFile(const std::string &product, const std::string &file) {
     std::string url = std::format("https://{}.version.battle.net/{}/{}", settings_.Region, product, file);
-    return client_.GetString(url);
+    return DownloadTextFromURL(url);
 }
 
 std::vector<uint8_t> CDN::GetFile(const std::string &type,
@@ -69,8 +85,8 @@ std::vector<uint8_t> CDN::GetFile(const std::string &type,
                                   uint64_t compressedSize,
                                   uint64_t decompressedSize,
                                   bool decode) {
-    std::atomic<bool> cancel{false};
-    auto data = DownloadFile(type, hash, compressedSize, cancel);
+
+    auto data = DownloadFile(type, hash, "", 0, compressedSize);
     if (!decode)
         return data;
     return BLTE::Decode(data, decompressedSize);
@@ -83,7 +99,7 @@ std::vector<uint8_t> CDN::GetFileFromArchive(const std::string &eKey,
                                              uint64_t decompressedSize,
                                              bool decode) {
     std::atomic<bool> cancel{false};
-    auto data = DownloadFileFromArchiveInternal(eKey, archive, offset, length, cancel);
+    auto data = DownloadFile("", eKey, archive, offset, length, cancel);
     if (!decode)
         return data;
     return BLTE::Decode(data, decompressedSize);
@@ -101,7 +117,7 @@ std::string CDN::GetFilePath(const std::string &type, const std::string &hash, u
     }
 
     std::atomic<bool> cancel{false};
-    auto data = DownloadFile(type, hash, compressedSize, cancel);
+    auto data = DownloadFile(type, hash, "", 0, compressedSize, cancel);
     std::filesystem::create_directories(cache.parent_path());
     std::ofstream ofs(cache, std::ios::binary);
     ofs.write(reinterpret_cast<const char *>(data.data()), data.size());
@@ -116,7 +132,7 @@ std::string CDN::GetDecodedFilePath(const std::string &type,
     if (std::filesystem::exists(path))
         return path;
 
-    auto data = DownloadFile(type, hash, compressedSize, std::atomic<bool>{false});
+    auto data = DownloadFile(type, hash, "", 0, compressedSize);
     auto decoded = BLTE::Decode(data, decompressedSize);
     std::ofstream ofs(path, std::ios::binary);
     ofs.write(reinterpret_cast<const char *>(decoded.data()), decoded.size());
@@ -128,7 +144,12 @@ void CDN::LoadCDNs() {
 
     std::string url = std::format("http://{}.patch.battle.net:1119/{}/cdns", settings_.Region, settings_.Product);
 
-    std::string cdnText = client_.GetString(url);
+    auto r = cpr::Get(cpr::Url(url));
+    if (r.status_code != 200) {
+        return ;
+    }
+
+    std::string cdnText = DownloadTextFromURL(url);
 
     auto lines = tokenizeAndFilter(cdnText, "\n", [](std::string &line) {
         if (line.empty()) return false;
@@ -161,7 +182,7 @@ void CDN::LoadCDNs() {
             if (productDirectory_.empty())
                 productDirectory_ = recordTokens[PathIndex];
 
-            auto servers = tokenize(recordTokens[HostsIndex], ' ');
+            auto servers = tokenize(recordTokens[HostsIndex], " ");
             SetCDNs(servers);
         }
     }
@@ -174,89 +195,139 @@ void CDN::LoadCDNs() {
 }
 
 void CDN::LoadCASCIndices() {
-    if (settings_.BaseDir.empty()) return;
-    std::filesystem::path dataDir = settings_.BaseDir;
+    if (!settings_.BaseDir.has_value()) return;
+
+    std::filesystem::path dataDir = settings_.BaseDir.value();
     dataDir /= "Data/data";
+
     if (!std::filesystem::exists(dataDir)) return;
 
     for (auto &entry: std::filesystem::directory_iterator(dataDir)) {
         if (entry.path().extension() != ".idx") continue;
+
         auto name = entry.path().stem().string();
         if (name.rfind("tempfile", 0) == 0) continue;
+
         uint8_t bucket = std::stoul(name.substr(0, 2), nullptr, 16);
         cascIndices_.emplace(bucket,
                              std::make_unique<CASCIndexInstance>(entry.path().string()));
     }
 }
 
-std::vector<uint8_t> CDN::DownloadFile(const std::string &type,
-                                       const std::string &hash,
-                                       uint64_t size,
-                                       const std::atomic<bool> &cancelFlag) {
-    // Local lookup
+std::vector<uint8_t> CDN::DownloadFile(
+    const std::string& type,
+    const std::string& key,
+    const std::string& archive,
+    int offset,
+    uint64_t expectedSize,
+    int timeoutMs)
+{
+    // 1) Attempt local fetch
     if (hasLocal_) {
-        if (type == "data" && hash.ends_with(".index")) {
-            std::filesystem::path p = settings_.BaseDir / "Data/indices" / hash;
-            if (std::filesystem::exists(p)) {
-                return readFile(p);
+        try {
+            std::vector<uint8_t> data;
+            if (archive.empty()) {
+                // Original local resolution logic for data/config
+                if (type == "data" && key.rfind(".index") == key.size() - 6) {
+                    std::filesystem::path p = std::filesystem::path(settings_.BaseDir.value()) / "Data" / "indices" / key;
+                    if (std::filesystem::exists(p)) {
+                        return readFile(p.string());
+                    }
+                } else if (type == "config" && key.size() >= 4) {
+                    std::filesystem::path p =
+                        std::filesystem::path(settings_.BaseDir.value()) / "Data" / "config" /
+                            key.substr(0,2) / key.substr(2,2) / key;
+                    if (std::filesystem::exists(p)) {
+                        return readFile(p.string());
+                    }
+                } else if (TryGetLocalFile(key, data)) {
+                    return data;
+                }
+            } else {
+                // Archive-based local lookup
+                if (TryGetLocalFile(key, data)) {
+                    return data;
+                }
             }
+        } catch (const std::exception& e) {
+            std::cerr << "Failed to read local file: " << e.what() << '\n';
         }
-        std::vector<uint8_t> local;
-        if (TryGetLocalFile(hash, local))
-            return local;
     }
 
-    // Ensure CDN list
-    {
-        std::lock_guard<std::mutex> lock(cdnMutex_);
-        if (cdnServers_.empty())
-            LoadCDNs();
+    // 2) Prepare cache path
+    std::string fileType = archive.empty() ? type : "data";
+    std::filesystem::path cacheDir = std::filesystem::path(settings_.CacheDir) / productDirectory_ / fileType;
+    std::filesystem::path cachePath = cacheDir / key;
+
+    // Ensure a lock exists for this path
+    fileLocks_.try_emplace(cachePath.string());
+
+    // 3) Check cache validity
+    if (std::filesystem::exists(cachePath)) {
+        auto size = std::filesystem::file_size(cachePath);
+        bool valid = archive.empty()
+            ? (expectedSize == 0 || size == expectedSize)
+            : (static_cast<uint64_t>(size) >= static_cast<uint64_t>(offset) + expectedSize);
+        if (valid) {
+            std::scoped_lock<std::mutex> lock(*fileLocks_[cachePath.string()]);
+            std::vector<uint8_t> buf(size);
+            std::ifstream in(cachePath, std::ios::binary);
+            in.read(reinterpret_cast<char*>(buf.data()), buf.size());
+            return buf;
+        } else {
+            std::filesystem::remove(cachePath);
+        }
     }
 
-    std::filesystem::path cache = settings_.CacheDir / productDirectory_ / type / hash;
-
-    auto &fileMutex = fileLocks_[cache.string()];
-    if (!fileMutex) fileMutex = std::make_shared<std::mutex>();
+    // 4) Ensure CDN list is loaded
     {
-        std::lock_guard<std::mutex> lk(*fileMutex);
-        if (std::filesystem::exists(cache)) {
-            if (size > 0 && std::filesystem::file_size(cache) != size)
-                std::filesystem::remove(cache);
-            else {
-                std::ifstream ifs(cache, std::ios::binary);
-                return std::vector<uint8_t>(std::istreambuf_iterator<char>(ifs), {});
+        std::scoped_lock lock(cdnMutex_);
+        if (cdnServers_.empty()) LoadCDNs();
+    }
+
+    // 5) Download from CDN(s)
+    for (const auto& server : cdnServers_) {
+        // URL segments
+        std::string seg1 = archive.empty() ? key.substr(0,2) : archive.substr(0,2);
+        std::string seg2 = archive.empty() ? key.substr(2,2) : archive.substr(2,2);
+        std::string resource = archive.empty() ? key : archive;
+
+        std::string url = std::format("http://{}/{}/{}/{}/{}/{}", server, productDirectory_, fileType, seg1, seg2, resource);
+
+        std::cout << "Downloading " << key << " from " << url << '\n';
+
+        // Build request
+        cpr::Session session;
+        session.SetUrl(cpr::Url{url});
+        if (timeoutMs > 0)
+            session.SetTimeout(cpr::Timeout{timeoutMs});
+        if (!archive.empty()) {
+            std::string rangeHeader = std::to_string(offset) + "-" + std::to_string(offset + expectedSize - 1);
+            session.SetHeader({{"Range", "bytes=" + rangeHeader}});
+        }
+
+        cpr::Response r = session.Get();
+        if (r.status_code == 200) {
+            // Write to cache
+            if (archive.empty()) {
+                std::scoped_lock lock(*fileLocks_[cachePath.string()]);
+                std::filesystem::create_directories(cacheDir);
+                std::ofstream out(cachePath, std::ios::binary);
+                out.write(r.text.c_str(), r.text.size());
             }
+
+            // Return data
+            std::vector<uint8_t> buf(r.text.begin(), r.text.end());
+            return buf;
         }
+
+        std::cerr << "HTTP " << r.status_code << " downloading " << key << " from " << server << '\n';
     }
 
-    // Download attempts
-    for (auto &server: cdnServers_) {
-        std::string url = std::format("http://{}/{}/{}/{}/{}/{}",
-            server, productDirectory_, type, hash.substr(0, 2), hash.substr(2, 2), hash);
-
-
-
-        std::cout << "Downloading " << url << "\n";
-        auto response = client_.GetStream(url);
-        if (!response.IsSuccess()) continue; {
-            std::lock_guard<std::mutex> lk(*fileMutex);
-            std::filesystem::create_directories(cache.parent_path());
-            std::ofstream ofs(cache, std::ios::binary);
-            ofs << response.GetStream().rdbuf();
-        }
-        return DownloadFile(type, hash, size, cancelFlag); // read from cache
-    }
-    throw std::runtime_error("Exhausted all CDNs downloading " + hash);
-}
-
-std::vector<uint8_t> CDN::DownloadFileFromArchiveInternal(const std::string &eKey,
-                                                          const std::string &archive,
-                                                          size_t offset,
-                                                          size_t length,
-                                                          const std::atomic<bool> &cancelFlag) {
-    // Similar to DownloadFile, with HTTP Range header
-    // Omitted for brevity; follow same pattern and use client_.GetStreamWithRange
-    return {};
+    throw std::runtime_error(
+        archive.empty()
+        ? "Exhausted all CDNs trying to download " + key
+        : "Exhausted all CDNs trying to download " + key + " (archive " + archive + ")");
 }
 
 std::string PadLeft(const std::string& input, std::size_t totalLength, char symbol) {
@@ -268,7 +339,7 @@ std::string PadLeft(const std::string& input, std::size_t totalLength, char symb
 }
 
 bool CDN::TryGetLocalFile(const std::string &eKey, std::vector<uint8_t> &outData) {
-    auto bytes = FromHex(eKey);
+    auto bytes = hexToBytes(eKey);
 
     uint8_t i = 0;
     for (int idx = 0; idx < 9; ++idx) i ^= bytes[idx];
@@ -279,15 +350,16 @@ bool CDN::TryGetLocalFile(const std::string &eKey, std::vector<uint8_t> &outData
     if (it == cascIndices_.end()) return false;
 
     auto info = it->second->GetIndexInfo(bytes);
-    if (info.offset == (size_t) -1) return false;
+    if (info.archiveOffset == (size_t) -1) return false;
 
-    std::filesystem::path archivePath = settings_.BaseDir / ("Data/data/data." + PadLeft(info.archiveIndex, 3, '0'));
+    std::filesystem::path archivePath =
+        settings_.BaseDir.value() / ("Data/data/data." + PadLeft(std::to_string(info.archiveIndex), 3, '0'));
 
     size_t fileLen = std::filesystem::file_size(archivePath);
-    if (info.offset + info.size > fileLen) return false;
+    if (info.archiveOffset + info.archiveSize > fileLen) return false;
     std::ifstream ifs(archivePath, std::ios::binary);
-    ifs.seekg(info.offset);
-    outData.resize(info.size);
-    ifs.read(reinterpret_cast<char *>(outData.data()), info.size);
+    ifs.seekg(info.archiveOffset);
+    outData.resize(info.archiveSize);
+    ifs.read(reinterpret_cast<char *>(outData.data()), info.archiveSize);
     return true;
 }
