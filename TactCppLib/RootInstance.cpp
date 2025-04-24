@@ -66,6 +66,8 @@ RootInstance::RootInstance(const string& path, const Settings& settings)
         } else {
             offset = 12;
         }
+        entriesFDID.reserve(totalFiles);
+
         newRoot = true;
     }
 

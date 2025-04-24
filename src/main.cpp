@@ -13,12 +13,12 @@
 #include <execution>
 #include <ranges>
 
-#include "3rdparty/cxxopts.hpp"
-#include "BuildInstance.h"
-#include "BuildInfo.h"
-#include "utils/Jenkins96.h"
-#include "utils/stringUtils.h"
-#include "utils/TactConfigParser.h"
+#include "../3rdparty/cxxopts.hpp"
+#include "../TactCppLib/BuildInstance.h"
+#include "../TactCppLib/BuildInfo.h"
+#include "../TactCppLib/utils/Jenkins96.h"
+#include "../TactCppLib/utils/stringUtils.h"
+#include "../TactCppLib/utils/TactConfigParser.h"
 
 namespace fs = std::filesystem;
 using namespace TACTSharp;

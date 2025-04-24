@@ -255,6 +255,13 @@ std::vector<uint8_t> CDN::DownloadFile(
         }
     }
 
+    // 4) Ensure CDN list is loaded (so that the productDirectory is filled)
+    {
+        std::scoped_lock lock(cdnLoadingMutex_);
+        if (cdnServers_.empty())
+            LoadCDNs();
+    }
+
     // 2) Prepare cache path
     std::string fileType = archive.empty() ? type : "data";
     std::filesystem::path cacheDir = std::filesystem::path(settings_.CacheDir) / productDirectory_ / fileType;
@@ -264,9 +271,7 @@ std::vector<uint8_t> CDN::DownloadFile(
     // 3) Check cache validity
     if (std::filesystem::exists(cachePath)) {
         auto size = std::filesystem::file_size(cachePath);
-        bool valid = archive.empty()
-            ? (expectedSize == 0 || size == expectedSize)
-            : (static_cast<uint64_t>(size) >= static_cast<uint64_t>(offset) + expectedSize);
+        bool valid = (expectedSize == 0 || size == expectedSize);
         if (valid) {
             std::scoped_lock<std::mutex> lock(fileLocks_[cachePath.string()]);
             std::vector<uint8_t> buf(size);
@@ -278,13 +283,6 @@ std::vector<uint8_t> CDN::DownloadFile(
         }
     }
 
-    // 4) Ensure CDN list is loaded
-    {
-        std::scoped_lock lock(cdnLoadingMutex_);
-        if (cdnServers_.empty())
-            LoadCDNs();
-    }
-
     // 5) Download from CDN(s)
     for (const auto& server : cdnServers_) {
         // URL segments
@@ -294,7 +292,12 @@ std::vector<uint8_t> CDN::DownloadFile(
 
         std::string url = std::format("http://{}/{}/{}/{}/{}/{}", server, productDirectory_, fileType, seg1, seg2, resource);
 
-        std::cout << "Downloading " << key << " (expected size " << expectedSize << ") from " << url << std::endl << std::flush;
+        if (!archive.empty()) {
+            std::cout << "Downloading chunk " << key << " from " << url <<
+                " (offset " << offset << " expected size " << expectedSize << " )" << std::endl << std::flush;
+        } else {
+            std::cout << "Downloading " << key << " from " << url << "(expected size " << expectedSize << " )" << std::endl << std::flush;
+        }
 
         // Build request
         cpr::Session session;
@@ -309,12 +312,11 @@ std::vector<uint8_t> CDN::DownloadFile(
         cpr::Response r = session.Get();
         if (r.status_code == 200 || r.status_code == 206) {
             // Write to cache
-            if (archive.empty()) {
-                std::scoped_lock lock(fileLocks_[cachePath.string()]);
-                std::filesystem::create_directories(cacheDir);
-                std::ofstream out(cachePath, std::ios::binary);
-                out.write(r.text.c_str(), r.text.size());
-            }
+
+            std::scoped_lock lock(fileLocks_[cachePath.string()]);
+            std::filesystem::create_directories(cacheDir);
+            std::ofstream out(cachePath, std::ios::binary);
+            out.write(r.text.c_str(), r.text.size());
 
             // Return data
             std::vector<uint8_t> buf(r.text.begin(), r.text.end());

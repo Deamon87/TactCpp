@@ -45,38 +45,43 @@ FetchContent_GetProperties(zlib)
 FetchContent_MakeAvailable(zlib)
 
 
-add_executable(TactCpp main.cpp utils/KeyService.cpp
-        utils/Jenkins96.cpp
-        utils/Jenkins96.h
-        BLTE.cpp
-        BLTE.h
-        CDN.cpp
-        CDN.h
-        utils/stringUtils.h
-        CASCIndexInstance.h
-        Settings.h
-        RootInstance.cpp
-        RootInstance.h
-		MemoryMappedFile.cpp
-		MemoryMappedFile.h
-		utils/BinaryUtils.h
-		EncodingInstance.cpp
-		EncodingInstance.h
-		IndexInstance.cpp
-		IndexInstance.h
-		InstallInstance.cpp
-		InstallInstance.h
-		BuildInstance.cpp
-		BuildInstance.h
-		Config.h
-		GroupIndex.cpp
-		GroupIndex.h
-		wow/WoWRootFlags.h
-		BuildInfo.h
-		3rdparty/cxxopts.hpp
-		utils/TactConfigParser.cpp
-		utils/TactConfigParser.h
+add_library(TactCppLib
+		TactCppLib/utils/KeyService.cpp
+        TactCppLib/utils/Jenkins96.cpp
+        TactCppLib/utils/Jenkins96.h
+        TactCppLib/BLTE.cpp
+        TactCppLib/BLTE.h
+        TactCppLib/CDN.cpp
+        TactCppLib/CDN.h
+        TactCppLib/utils/stringUtils.h
+        TactCppLib/CASCIndexInstance.h
+        TactCppLib/Settings.h
+        TactCppLib/RootInstance.cpp
+        TactCppLib/RootInstance.h
+		TactCppLib/MemoryMappedFile.cpp
+		TactCppLib/MemoryMappedFile.h
+		TactCppLib/utils/BinaryUtils.h
+		TactCppLib/EncodingInstance.cpp
+		TactCppLib/EncodingInstance.h
+		TactCppLib/IndexInstance.cpp
+		TactCppLib/IndexInstance.h
+		TactCppLib/InstallInstance.cpp
+		TactCppLib/InstallInstance.h
+		TactCppLib/BuildInstance.cpp
+		TactCppLib/BuildInstance.h
+		TactCppLib/Config.h
+		TactCppLib/GroupIndex.cpp
+		TactCppLib/GroupIndex.h
+		TactCppLib/wow/WoWRootFlags.h
+		TactCppLib/BuildInfo.h
+		TactCppLib/utils/TactConfigParser.cpp
+		TactCppLib/utils/TactConfigParser.h
 )
 
-target_link_libraries(TactCpp cpr::cpr)
-target_link_libraries(TactCpp zlib)
+target_link_libraries(TactCppLib cpr::cpr)
+target_link_libraries(TactCppLib zlib)
+
+
+add_executable(TactCpp src/main.cpp)
+
+target_link_libraries(TactCpp TactCppLib)
