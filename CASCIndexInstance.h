@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <cstring>
 
+#include "MemoryMappedFile.h"
+
 #pragma pack(push, 1)
 struct IndexHeader {
     uint32_t headerHashSize;
@@ -29,9 +31,9 @@ static_assert(sizeof(IndexHeader) == 40, "IndexHeader must be exactly 40 bytes")
 
 class CASCIndexInstance {
 private:
-    HANDLE fileHandle = INVALID_HANDLE_VALUE;
-    HANDLE mappingHandle = nullptr;
     uint8_t* fileData = nullptr;
+    std::shared_ptr<MemoryMappedFile> file;
+
     size_t indexSize = 0;
 
     IndexHeader header;
@@ -67,33 +69,13 @@ private:
 public:
     explicit CASCIndexInstance(const std::string& path) {
         // Open file
-        fileHandle = CreateFileA(path.c_str(), GENERIC_READ,
-                                 FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                 nullptr, OPEN_EXISTING,
-                                 FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (fileHandle == INVALID_HANDLE_VALUE)
-            throw std::runtime_error("Failed to open file: " + path);
+        file = std::make_shared<MemoryMappedFile>(path);
+        fileData = static_cast<uint8_t *>(file->data());
 
-        // Determine file size
-        LARGE_INTEGER size;
-        if (!GetFileSizeEx(fileHandle, &size))
-            throw std::runtime_error("Failed to get file size");
-        indexSize = static_cast<size_t>(size.QuadPart);
-
-        // Create memory mapping
-        mappingHandle = CreateFileMappingA(fileHandle, nullptr,
-                                           PAGE_READONLY, 0, 0, nullptr);
-        if (!mappingHandle)
-            throw std::runtime_error("Failed to create file mapping");
-
-        // Map entire file
-        fileData = static_cast<uint8_t*>(MapViewOfFile(mappingHandle,
-                                                       FILE_MAP_READ, 0, 0, 0));
-        if (!fileData)
-            throw std::runtime_error("Failed to map view of file");
+        indexSize = file->size();
 
         // Read header
-        header = *reinterpret_cast<IndexHeader*>(fileData);
+        header = *reinterpret_cast<IndexHeader*>(file->data());
 
         // Compute entry layout
         entrySize = static_cast<size_t>(header.entrySizeBytes +
@@ -104,9 +86,6 @@ public:
     }
 
     ~CASCIndexInstance() {
-        if (fileData) UnmapViewOfFile(fileData);
-        if (mappingHandle) CloseHandle(mappingHandle);
-        if (fileHandle != INVALID_HANDLE_VALUE) CloseHandle(fileHandle);
     }
 
     struct FileArchiveData {int archiveOffset; int archiveSize; int archiveIndex;};

@@ -55,6 +55,8 @@ add_executable(TactCpp main.cpp utils/KeyService.cpp
         Settings.h
         RootInstance.cpp
         RootInstance.h
+		MemoryMappedFile.cpp
+		MemoryMappedFile.h
 )
 
 target_link_libraries(TactCpp cpr::cpr)
