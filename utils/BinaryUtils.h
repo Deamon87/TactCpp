@@ -21,6 +21,14 @@ inline int32_t ReadInt32BE(const uint8_t* ptr) {
             int32_t(ptr[3]);
 }
 
+inline uint32_t ReadUInt32BE(const uint8_t* ptr) {
+    return  (uint32_t(ptr[0]) << 24) |
+            (uint32_t(ptr[1]) << 16) |
+            (uint32_t(ptr[2]) <<  8) |
+            uint32_t(ptr[3]);
+}
+
+
 inline uint32_t ReadInt32LE(const uint8_t* ptr) {
     return uint32_t(ptr[0])       |
            (uint32_t(ptr[1]) << 8)  |
@@ -36,10 +44,19 @@ inline uint64_t ReadUInt40BE(const uint8_t* ptr) {
 }
 
 // Read a NUL-terminated string from ptr, returns length (without NUL)
-inline std::string ReadNullTermString(const uint8_t* ptr, size_t maxLen) {
-    const uint8_t* end = (uint8_t*)memchr(ptr, 0, maxLen);
-    if (!end) throw std::runtime_error("Missing NUL terminator");
-    return std::string(reinterpret_cast<const char*>(ptr), end - ptr);
+inline std::string ReadNullTermString(
+    const uint8_t* buf, size_t bufLen, size_t offset)
+{
+    if (offset >= bufLen)
+        throw std::runtime_error("String offset out of range");
+    const char* start = reinterpret_cast<const char*>(buf + offset);
+    size_t maxLen = bufLen - offset;
+#ifdef _MSC_VER
+    size_t len = strnlen_s(start, maxLen);
+#else
+    size_t len = strnlen(start, maxLen);
+#endif
+    return std::string(start, len);
 }
 
 // Lexicographical compare two byte sequences

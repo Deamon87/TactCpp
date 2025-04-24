@@ -116,7 +116,7 @@ EncodingInstance::GetESpec(const std::vector<uint8_t>& target) {
             size_t off = _schema.encodingSpec.start;
             size_t remain = _schema.encodingSpec.end - off;
             while (remain) {
-                auto s = ReadNullTermString(_view + off, remain);
+                auto s = ReadNullTermString(_view, remain, off);
                 _encodingSpecs.push_back(s);
                 off    += s.size() + 1;
                 remain -= s.size() + 1;
