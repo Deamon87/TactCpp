@@ -1,6 +1,7 @@
+#define NOMINMAX 1
+
 #include "GroupIndex.h"
 
-#include <openssl/md5.h>
 #include <algorithm>
 #include <execution>
 #include <fstream>
@@ -12,6 +13,7 @@
 
 #include "IndexInstance.h"
 #include "utils/stringUtils.h"
+#include "utils/Bswap.h"
 
 std::string md5(const uint8_t* data, uint32_t length) {
     static const uint32_t s[64] = {
@@ -111,12 +113,12 @@ std::string GroupIndex::Generate(
 {
     std::string hash = inputHash;
     if (hash.empty()) {
-        std::cout << "Generating group index for unknown group-index\n";
+        std::cout << "Generating group index for unknown group-index" << std::endl << std::flush;
     } else {
-        std::cout << "Generating group index for " << hash << "\n";
+        std::cout << "Generating group index for " << hash << std::endl << std::flush;
     }
 
-    std::cout << "Loading " << archives.size() << " index files\n";
+    std::cout << "Loading " << archives.size() << " index files" << std::endl << std::flush;
 
     // load each archive in parallel
     std::vector<std::future<void>> futures;
@@ -192,11 +194,11 @@ std::string GroupIndex::Generate(
 
     // helper to write little-endian
     auto write32 = [&](size_t pos, uint32_t v){
-        v = __builtin_bswap32(v);
+        v = bswap32(v);
         std::memcpy(buf.data()+pos, &v, 4);
     };
     auto write16 = [&](size_t pos, uint16_t v){
-        v = __builtin_bswap16(v);
+        v = bswap16(v);
         std::memcpy(buf.data()+pos, &v, 2);
     };
 

@@ -1,4 +1,5 @@
 #include "EncodingInstance.h"
+#include <array>
 #include <stdexcept>
 #include <cassert>
 #include <chrono>

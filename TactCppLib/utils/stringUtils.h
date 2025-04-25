@@ -5,6 +5,7 @@
 #ifndef STRINGUTILS_H
 #define STRINGUTILS_H
 
+#include <array>
 #include <string>
 #include <stdexcept>
 #include <cstdint>

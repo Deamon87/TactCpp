@@ -45,7 +45,7 @@ FetchContent_GetProperties(zlib)
 FetchContent_MakeAvailable(zlib)
 
 
-add_library(TactCppLib
+add_library(TactCppLib STATIC
 		TactCppLib/utils/KeyService.cpp
         TactCppLib/utils/Jenkins96.cpp
         TactCppLib/utils/Jenkins96.h
