@@ -9,6 +9,7 @@
 
 #include "MemoryMappedFile.h"
 #include "utils/BinaryUtils.h"
+#include "utils/DataReader.h"
 
 #pragma pack(push, 1)
 struct IndexHeader {
@@ -96,16 +97,16 @@ public:
             return {-1, -1, -1};
 
         // Read archiveIndex and offsets
-        uint8_t indexHigh = *(entryPtr + header.entryKeyBytes);
-        const uint8_t* pLow = entryPtr + header.entryKeyBytes + 1;
-        uint32_t indexLow = ReadInt32BE(pLow);
-        const uint8_t* pSize = entryPtr + header.entryKeyBytes + 5;
-        uint32_t rawSize = ReadInt32LE(pSize);
+        DataReader dr(entryPtr +header.entryKeyBytes, entrySize);
+
+        uint8_t indexHigh = dr.ReadUInt8();
+        uint32_t indexLow = dr.ReadInt32BE();
+
+        uint32_t rawSize  = dr.ReadInt32LE();
 
         int dataSize = int(rawSize) - 30;
 
-        int archiveIdx = (int(indexHigh) << 2) |
-                         int((indexLow & 0xC0000000) >> 30);
+        int archiveIdx = (int(indexHigh) << 2) | int((indexLow & 0xC0000000) >> 30);
         int archiveOff = int(indexLow & 0x3FFFFFFF) + 30;
 
         return {archiveOff, dataSize, archiveIdx};

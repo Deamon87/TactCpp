@@ -10,87 +10,98 @@
 #include <zlib.h>
 #include <cstring>
 
+#include "utils/DataReader.h"
 #include "utils/KeyService.h"
 
-uint32_t BLTE::ReadUInt32BE(const uint8_t* ptr) {
-    return (static_cast<uint32_t>(ptr[0]) << 24)
-         | (static_cast<uint32_t>(ptr[1]) << 16)
-         | (static_cast<uint32_t>(ptr[2]) << 8)
-         |  static_cast<uint32_t>(ptr[3]);
-}
-
-uint32_t BLTE::ReadUInt24BE(const uint8_t* ptr) {
-    return (static_cast<uint32_t>(ptr[0]) << 16)
-         | (static_cast<uint32_t>(ptr[1]) << 8)
-         |  static_cast<uint32_t>(ptr[2]);
-}
-
-uint64_t BLTE::ReadUInt64LE(const uint8_t* ptr) {
-    uint64_t v = 0;
-    for (int i = 0; i < 8; ++i) {
-        v |= static_cast<uint64_t>(ptr[i]) << (8 * i);
-    }
-    return v;
-}
+// In BLTE.cpp, using DataReader:
 
 std::vector<uint8_t> BLTE::Decode(const std::vector<uint8_t>& data, uint64_t totalDecompSize) {
     const size_t fixedHeaderSize = 8;
-    if (data.size() < fixedHeaderSize + 1
-        || data[0] != 'B' || data[1] != 'L' || data[2] != 'T' || data[3] != 'E') {
+    if (data.size() < fixedHeaderSize + 1)
+        throw std::runtime_error("Invalid BLTE header");
+
+    DataReader dr(const_cast<uint8_t*>(data.data()), data.size());
+
+    // 1) Magic check
+    if (dr.ReadUInt8() != 'B' ||dr.ReadUInt8() != 'L' ||dr.ReadUInt8() != 'T' || dr.ReadUInt8() != 'E')
+    {
         throw std::runtime_error("Invalid BLTE header");
     }
-    uint32_t headerSize = ReadUInt32BE(data.data() + 4);
+
+    // 2) headerSize (BE u32)
+    uint32_t headerSize = dr.ReadUInt32BE();
+
+    // 3) Single-block
     if (headerSize == 0) {
-        char mode = static_cast<char>(data[fixedHeaderSize]);
+        dr.SetOffset(fixedHeaderSize);
+        char mode = static_cast<char>(dr.ReadUInt8());
+
         if (mode != 'N' && totalDecompSize == 0)
-            throw std::runtime_error("totalDecompSize must be set for single non-normal BLTE block");
+            throw std::runtime_error(
+                "totalDecompSize must be set for single non-normal BLTE block"
+            );
         if (mode == 'N' && totalDecompSize == 0)
             totalDecompSize = data.size() - fixedHeaderSize - 1;
 
         std::vector<uint8_t> singleDecomp(static_cast<size_t>(totalDecompSize));
-        HandleDataBlock(mode,
-                        data.data() + fixedHeaderSize + 1,
-                        data.size() - fixedHeaderSize - 1,
-                        0,
-                        singleDecomp.data(),
-                        singleDecomp.size());
+
+        size_t compOffset = fixedHeaderSize + 1;
+        size_t compSize   = data.size() - compOffset;
+
+        HandleDataBlock(
+            mode,
+            data.data() + compOffset,
+            compSize,
+            /*chunkIndex=*/0,
+            singleDecomp.data(),
+            singleDecomp.size()
+        );
         return singleDecomp;
     }
+
+    // 4) Multi-chunk
     if (data.size() < headerSize)
         throw std::runtime_error("Data too small for declared headerSize");
 
-    uint8_t tableFormat = data[fixedHeaderSize];
-    if (tableFormat != 0xF)
+    // tableFormat and chunkCount
+    dr.SetOffset(fixedHeaderSize);
+    char tableFormat = static_cast<char>(dr.ReadUInt8());
+    if (tableFormat != static_cast<char>(0xF))
         throw std::runtime_error("Unexpected BLTE table format");
 
-    size_t blockInfoSize = 24;
-    uint32_t chunkCount = ReadUInt24BE(data.data() + fixedHeaderSize + 1);
-    size_t infoStart = fixedHeaderSize + 4;
+    uint32_t chunkCount = dr.ReadUInt24BE();
+
+    constexpr size_t blockInfoSize = 24;
+    size_t infoStart = fixedHeaderSize + 4; // = 12
 
     if (totalDecompSize == 0) {
-        size_t scanOffset = infoStart + 4;
         for (uint32_t i = 0; i < chunkCount; ++i) {
-            totalDecompSize += ReadUInt32BE(data.data() + scanOffset);
-            scanOffset += blockInfoSize;
+            dr.SetOffset(infoStart + 4 + i * blockInfoSize);
+            totalDecompSize += dr.ReadUInt32BE();
         }
     }
 
     std::vector<uint8_t> decompData(static_cast<size_t>(totalDecompSize));
-    size_t infoOffset = infoStart;
-    size_t compOffset = headerSize;
+
+    size_t infoOffset   = infoStart;
+    size_t compOffset   = headerSize;
     size_t decompOffset = 0;
 
     for (uint32_t chunkIndex = 0; chunkIndex < chunkCount; ++chunkIndex) {
-        uint32_t compSize   = ReadUInt32BE(data.data() + infoOffset);
-        uint32_t decompSize = ReadUInt32BE(data.data() + infoOffset + 4);
+        dr.SetOffset(infoOffset);
+        uint32_t compSize   = dr.ReadUInt32BE();
+        uint32_t decompSize = dr.ReadUInt32BE();
+
         char mode = static_cast<char>(data[compOffset]);
 
-        HandleDataBlock(mode,
-                        data.data() + compOffset + 1,
-                        compSize - 1,
-                        static_cast<int>(chunkIndex),
-                        decompData.data() + decompOffset,
-                        decompSize);
+        HandleDataBlock(
+            mode,
+            data.data() + compOffset + 1,
+            compSize - 1,
+            static_cast<int>(chunkIndex),
+            decompData.data() + decompOffset,
+            decompSize
+        );
 
         infoOffset   += blockInfoSize;
         compOffset   += compSize;
@@ -151,53 +162,55 @@ void BLTE::HandleDataBlock(char mode,
 bool BLTE::TryDecrypt(const uint8_t* data, size_t dataSize,
                        int chunkIndex,
                        std::vector<uint8_t>& output) {
-    if (dataSize < 1)
-        throw std::runtime_error("Invalid data for decrypt");
+    DataReader dr(const_cast<uint8_t*>(data), dataSize);
 
-    uint8_t keyNameSize = data[0];
-
+    // 1) keyNameSize
+    uint8_t keyNameSize = dr.ReadUInt8();
     if (keyNameSize != 8)
         throw std::runtime_error("keyNameSize must be 8");
 
-    if (dataSize < keyNameSize + 2)
-        throw std::runtime_error("Data too small for keyName and IV size");
+    // 2) keyName (little-endian u64)
+    uint64_t keyName = dr.ReadUInt64LE();
 
-    uint64_t keyName = ReadUInt64LE(data + 1);
-
+    // 3) lookup key
     std::vector<uint8_t> key;
     if (!KeyService::TryGetKey(keyName, key))
         return false;
 
-    size_t ivSizeOffset = 1 + keyNameSize;
-    uint8_t ivSize = data[ivSizeOffset];
+    // 4) ivSize
+    uint8_t ivSize = dr.ReadUInt8();
     if (ivSize != 4 || ivSize > 0x10)
         throw std::runtime_error("IVSize invalid");
 
-    size_t ivOffset = ivSizeOffset + 1;
-    if (dataSize < ivOffset + ivSize + 1)
-        throw std::runtime_error("Data too small for IV and encType");
+    // 5) IV bytes
+    std::vector<uint8_t> iv = dr.ReadUint8Array(ivSize);
 
-    std::vector<uint8_t> iv(ivSize);
-    std::memcpy(iv.data(), data + ivOffset, ivSize);
+    // pad IV out to 8 bytes
     iv.resize(8, 0);
 
-    char encType = static_cast<char>(data[ivOffset + ivSize]);
+    // 6) encryption type
+    char encType = static_cast<char>(dr.ReadUInt8());
     if (encType != 'S' && encType != 'A')
         throw std::runtime_error(std::string("Unhandled encryption type: ") + encType);
 
-    // XOR chunkIndex into first 4 bytes of IV
+    // 7) XOR chunkIndex into first 4 bytes of IV
     for (int i = 0; i < 4; ++i) {
         iv[i] ^= static_cast<uint8_t>((chunkIndex >> (i * 8)) & 0xFF);
     }
 
+    // 8) decrypt payload
+    size_t dataOffset     = dr.GetOffset();
+    size_t encryptedSize  = dataSize - dataOffset;
+
     if (encType == 'S') {
-        size_t dataOffset = ivOffset + ivSize + 1;
-        size_t encryptedSize = dataSize - dataOffset;
         output.resize(encryptedSize);
+        // decrypt with Salsa
         //TODO::!!!
         // KeyService::SalsaInstance().Decrypt(key, iv, data + dataOffset, encryptedSize, output.data());
         return true;
-    } else {
+    }
+    else {
+        // ARC4 not implemented
         throw std::runtime_error("Encryption type 'A' (ARC4) not implemented");
     }
 }

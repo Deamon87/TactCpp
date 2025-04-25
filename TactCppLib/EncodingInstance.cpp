@@ -4,6 +4,8 @@
 #include <chrono>
 #include <thread>
 
+#include "utils/DataReader.h"
+
 using namespace TACTSharp;
 
 // static empty
@@ -33,35 +35,54 @@ EncodingInstance::~EncodingInstance() {
 }
 
 void EncodingInstance::ReadHeader(uint8_t& version, EncodingSchema& schema) {
-    if (_fileSize < 22) throw std::runtime_error("File too small");
-    const uint8_t* h = _view;
-    if (h[0] != 0x45 || h[1] != 0x4E)
+    // Must have at least the 22-byte fixed header
+    if (_fileSize < 22)
+        throw std::runtime_error("File too small");
+
+    // Wrap the view in a bounds-checked reader
+    DataReader reader(const_cast<uint8_t*>(_view), _fileSize);
+
+    // --- magic bytes ---
+    if (reader.ReadUInt8() != 0x45 || reader.ReadUInt8() != 0x4E)
         throw std::runtime_error("Invalid magic");
 
-    version       = h[2];
-    uint8_t hashC = h[3];
-    uint8_t hashE = h[4];
-    uint16_t cPgSzK = ReadUInt16BE(h + 5) * 1024;
-    uint16_t ePgSzK = ReadUInt16BE(h + 7) * 1024;
-    int32_t cPgCnt  = ReadInt32BE(h + 9);
-    int32_t ePgCnt  = ReadInt32BE(h + 13);
-    int32_t eSpecSz = ReadInt32BE(h + 18);
+    // --- fixed fields ---
+    version       = reader.ReadUInt8();              // h[2]
+    uint8_t hashC = reader.ReadUInt8();              // h[3]
+    uint8_t hashE = reader.ReadUInt8();              // h[4]
+    uint16_t cPgSzK = reader.ReadUInt16BE() * 1024;  // h[5–6]
+    uint16_t ePgSzK = reader.ReadUInt16BE() * 1024;  // h[7–8]
+    int32_t cPgCnt  = reader.ReadInt32BE();          // h[9–12]
+    int32_t ePgCnt  = reader.ReadInt32BE();          // h[13–16]
 
-    size_t off = 22;
-    Range rSpec{ off, off + eSpecSz };
+    // Skip the one reserved byte at h[17]
+    reader.ReadUInt8();
+
+    // Read the size of the spec section (h[18–21])
+    int32_t eSpecSz = reader.ReadInt32BE();
+
+    // --- compute ranges ---
+    std::size_t off = reader.GetOffset();  // should be 22 now
+
+    Range rSpec{ off, off + std::size_t(eSpecSz) };
+
     off = rSpec.end;
-    Range cHdr{ off, off + size_t(cPgCnt) * (hashC + 0x10) };
-    off = cHdr.end;
-    Range cPages{ off, off + size_t(cPgSzK) * cPgCnt };
-    off = cPages.end;
-    Range eHdr{ off, off + size_t(ePgCnt) * (hashE + 0x10) };
-    off = eHdr.end;
-    Range ePages{ off, off + size_t(ePgSzK) * ePgCnt };
+    Range cHdr{ off, off + std::size_t(cPgCnt) * (std::size_t(hashC) + 0x10) };
 
+    off = cHdr.end;
+    Range cPages{ off, off + std::size_t(cPgSzK) * std::size_t(cPgCnt) };
+
+    off = cPages.end;
+    Range eHdr{ off, off + std::size_t(ePgCnt) * (std::size_t(hashE) + 0x10) };
+
+    off = eHdr.end;
+    Range ePages{ off, off + std::size_t(ePgSzK) * std::size_t(ePgCnt) };
+
+    // --- fill out the schema ---
     schema = EncodingSchema{
         hashC, hashE, rSpec,
-        TableSchema{cHdr, cPages, size_t(hashC)+0x10, size_t(cPgSzK)},
-        TableSchema{eHdr, ePages, size_t(hashE)+0x10, size_t(ePgSzK)}
+        TableSchema{ cHdr,    cPages, std::size_t(hashC) + 0x10, std::size_t(cPgSzK) },
+        TableSchema{ eHdr,    ePages, std::size_t(hashE) + 0x10, std::size_t(ePgSzK) }
     };
 }
 EncodingResult EncodingInstance::FindContentKey(const std::array<uint8_t, 16>& cKeyTarget) const {
@@ -76,56 +97,93 @@ EncodingResult EncodingInstance::FindContentKey(const uint8_t *keyPtr, int keyLe
     auto [ptr, sz] = _schema.cEKey.ResolvePage(_view, _fileSize,
                                                keyPtr, keyLength);
 
-    while (sz > 0) {
-        uint8_t cnt = ptr[0];
-        size_t recordLen = 1 + 5 + _schema.cKeySize + cnt * _schema.eKeySize;
-        // record payload starts at ptr+1
-        const uint8_t* rec = ptr + 1;
-        // read fileSize
-        uint64_t decSize = ReadUInt40BE(rec);
-        const uint8_t* cKey = rec + 5;
-        if (SequenceEqual(cKey, keyPtr, _schema.cKeySize)) {
-            // copy encoding keys
-            const uint8_t* eKeys = cKey + _schema.cKeySize;
-            std::vector<uint8_t> keys(eKeys, eKeys + cnt*_schema.eKeySize);
-            return EncodingResult{cnt, std::move(keys), decSize};
+    DataReader reader(const_cast<uint8_t*>(ptr), sz);
+
+    while (reader.GetOffset() < sz) {
+        const std::size_t recordStart = reader.GetOffset();
+
+        // 1-byte count
+        uint8_t cnt = reader.ReadUInt8();
+
+        // 5-byte decrypted size
+        uint64_t decSize = reader.ReadUInt40BE();
+
+        // Compare cKey
+        std::size_t cKeyOff = reader.GetOffset();
+        if (SequenceEqual(ptr + cKeyOff, keyPtr, _schema.cKeySize)) {
+            // Read eKeys
+            std::size_t eKeysOff = cKeyOff + _schema.cKeySize;
+            std::size_t eKeysLen = std::size_t(cnt) * _schema.eKeySize;
+            assert(eKeysOff + eKeysLen <= sz);
+
+            std::vector<uint8_t> keys(ptr + eKeysOff,
+                                      ptr + eKeysOff + eKeysLen);
+            return EncodingResult{ cnt, std::move(keys), decSize };
         }
-        // advance to next record
-        ptr += recordLen;
-        sz  -= recordLen;
+
+        // Skip entire record
+        std::size_t recordLen =
+            1 /*cnt*/ + 5 /*decSize*/ +
+            _schema.cKeySize +
+            std::size_t(cnt) * _schema.eKeySize;
+        reader.SetOffset(recordStart + recordLen);
     }
+
     return EncodingInstance::Zero;
 }
 
-std::pair<std::string,uint64_t>
+std::pair<std::string, uint64_t>
 EncodingInstance::GetESpec(const std::vector<uint8_t>& target) {
-    // lazy load specs
+    // Lazy-load the spec strings (thread-safe)
     {
         std::lock_guard<std::mutex> lk(_specsMutex);
         if (_encodingSpecs.empty()) {
-            size_t off = _schema.encodingSpec.start;
-            size_t remain = _schema.encodingSpec.end - off;
-            while (remain) {
-                auto s = ReadNullTermString(_view, remain, off);
-                _encodingSpecs.push_back(s);
-                off    += s.size() + 1;
-                remain -= s.size() + 1;
+            const std::size_t start  = _schema.encodingSpec.start;
+            const std::size_t end    = _schema.encodingSpec.end;
+            const std::size_t length = end - start;
+
+            // Wrap the spec region in a DataReader
+            DataReader specReader(const_cast<uint8_t*>(_view + start), length);
+
+            // Read all NUL-terminated strings until we exhaust the region
+            while (specReader.GetOffset() < length) {
+                _encodingSpecs.push_back(specReader.ReadNullTermString());
             }
         }
     }
 
-    auto [ptr, sz] = _schema.eKeySpec.ResolvePage(_view, _fileSize,
-                                                  target.data(), target.size());
-    while (sz >= _schema.eKeySize + 4 + 5) {
-        if (SequenceEqual(ptr, target.data(), _schema.eKeySize)) {
-            uint32_t idx = ReadInt32BE(ptr + _schema.eKeySize);
-            uint64_t encSize = ReadUInt40BE(ptr + _schema.eKeySize + 4);
-            return {_encodingSpecs.at(idx), encSize};
+    // Resolve the page containing eKey specifications
+    auto [ptr, sz] = _schema.eKeySpec.ResolvePage(
+        _view, _fileSize, target.data(), target.size());
+
+    DataReader reader(const_cast<uint8_t*>(ptr), sz);
+
+    // Each record is: [eKey (_schema.eKeySize bytes)] [idx (4-byte BE)] [encSize (5-byte BE)]
+    const std::size_t recordSize = _schema.eKeySize + 4 + 5;
+
+    // Scan through records
+    while (reader.GetOffset() + recordSize <= sz) {
+        const std::size_t recOff = reader.GetOffset();
+
+        // Compare the eKey prefix
+        if (SequenceEqual(ptr + recOff, target.data(), _schema.eKeySize)) {
+            // Advance past the eKey
+            reader.SetOffset(recOff + _schema.eKeySize);
+
+            // Read the index and size
+            uint32_t idx     = reader.ReadInt32BE();
+            uint64_t encSize = reader.ReadUInt40BE();
+
+            // Return the matching spec string and size
+            return { _encodingSpecs.at(idx), encSize };
         }
-        ptr += _schema.eKeySize + 4 + 5;
-        sz  -= _schema.eKeySize + 4 + 5;
+
+        // No match: skip the entire record
+        reader.SetOffset(recOff + recordSize);
     }
-    return {"",0};
+
+    // Not found
+    return { "", 0 };
 }
 
 // TableSchema implementation

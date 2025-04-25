@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "utils/BinaryUtils.h"
+#include "utils/DataReader.h"
 
 IndexInstance::IndexInstance(const std::string &path, int16_t archiveIndex)
     : fileData_(nullptr), archiveIndex_(archiveIndex) {
@@ -84,25 +85,28 @@ IndexInstance::GetIndexInfo(std::span<const uint8_t> eKeyTarget) const {
     if (std::memcmp(entry, eKeyTarget.data(), footer_.keyBytes) != 0)
         return {-1, -1, -1};
 
-    // Parse offset/size/archiveIndex
-    int32_t size = 0, offset = -1;
-    int16_t arcIdx = archiveIndex_;
-    auto ptr = entry + footer_.keyBytes;
+    DataReader dr(const_cast<uint8_t*>(entry), entrySize_);
+    // skip over the key
+    dr.SetOffset(footer_.keyBytes);
 
     // size always big-endian 32-bit
-    size = ReadInt32BE(ptr);
-    ptr += footer_.sizeBytes;
+    assert(footer_.sizeBytes == 4);
+    int32_t size = dr.ReadInt32BE();
+
+    int32_t offset = -1;
+    int16_t arcIdx = archiveIndex_;
 
     if (isGroupArchive_) {
-        arcIdx = static_cast<int16_t>(ReadUInt16BE(ptr));
-        ptr += 2;
-        offset = ReadInt32BE(ptr);
-    } else if (!isFileIndex_) {
-        // offsetBytes may be <=4; for <=2 use ReadUInt16BE, else ReadInt32BE
-        if (footer_.offsetBytes == 2)
-            offset = static_cast<int32_t>(ReadUInt16BE(ptr));
-        else
-            offset = ReadInt32BE(ptr);
+        arcIdx = dr.ReadUInt16BE();
+        offset = dr.ReadInt32BE();
+    }
+    else if (!isFileIndex_) {
+        // only non-file-index archives have an offset
+        if (footer_.offsetBytes == 2) {
+            offset = static_cast<int32_t>(dr.ReadUInt16BE());
+        } else {
+            offset = dr.ReadInt32BE();
+        }
     }
 
     return {offset, size, arcIdx};
@@ -118,26 +122,32 @@ std::vector<IndexInstance::Entry> IndexInstance::GetAllEntries() {
         for (int j = 0; j < entriesPerBlock_; ++j) {
             const uint8_t *entryPtr = startOfBlock + j * entrySize_;
 
-            // slice out the key
-            std::vector<uint8_t> eKey(entryPtr, entryPtr + footer_.keyBytes);
+            DataReader dr(const_cast<uint8_t*>(entryPtr), entrySize_);
 
-            int offset = -1;
-            int size = 0;
-            int aIndex = archiveIndex_;
+            std::vector<uint8_t> eKey(footer_.keyBytes);
+            for (size_t k = 0; k < footer_.keyBytes; ++k) {
+                eKey[k] = dr.ReadUInt8();
+            }
+
+            int32_t size   = 0;
+            int32_t offset = -1;
+            int     aIndex = archiveIndex_;
 
             if (isGroupArchive_) {
-                size = ReadInt32BE(entryPtr + footer_.keyBytes);
-                aIndex = ReadInt16BE(entryPtr + footer_.keyBytes + footer_.sizeBytes);
-                offset = ReadInt32BE(entryPtr + footer_.keyBytes + footer_.sizeBytes + 2);
-            } else if (isFileIndex_) {
-                size = ReadInt32BE(entryPtr + footer_.keyBytes);
-            } else {
-                size = ReadInt32BE(entryPtr + footer_.keyBytes);
-                offset = ReadInt32BE(entryPtr + footer_.keyBytes + footer_.sizeBytes);
+                size   = dr.ReadInt32BE();
+                aIndex = dr.ReadInt16BE();
+                offset = dr.ReadInt32BE();
+            }
+            else if (isFileIndex_) {
+                size = dr.ReadInt32BE();
+            }
+            else {
+                size   = dr.ReadInt32BE();
+                offset = dr.ReadInt32BE();
             }
 
             if (size != 0) {
-                entries.push_back({eKey, offset, size, aIndex});
+                entries.push_back({ std::move(eKey), offset, size, aIndex });
             }
         }
     }

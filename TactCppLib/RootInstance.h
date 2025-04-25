@@ -39,9 +39,6 @@ private:
     std::unordered_map<uint64_t, uint32_t>  entriesLookup;
     std::unordered_map<uint32_t, RootEntry> entriesFDID;
     std::unordered_map<uint32_t, std::vector<RootEntry>> entriesFDIDFull;
-
-    static uint32_t ReadUInt32LE(const std::vector<uint8_t>& data, size_t offset);
-    static uint64_t ReadUInt64LE(const std::vector<uint8_t>& data, size_t offset);
 };
 
 #endif

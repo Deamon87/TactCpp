@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include "utils/BinaryUtils.h"
+#include "utils/DataReader.h"
 
 InstallInstance::InstallInstance(const std::string& path)
     : mmf_(path, /*write=*/false)
@@ -10,40 +11,41 @@ InstallInstance::InstallInstance(const std::string& path)
     if (!mmf_.isOpen())
         throw std::runtime_error("Cannot open memory-mapped file: " + path);
 
-    const uint8_t* buf = reinterpret_cast<const uint8_t*>(mmf_.data());
-    size_t bufLen      = mmf_.size();
-    if (!buf || bufLen < 10)
+    auto* base = static_cast<uint8_t*>(mmf_.data());
+    const size_t bufLen = mmf_.size();
+    if (!base || bufLen < 10)
         throw std::runtime_error("File too small or invalid mapping");
 
+    DataReader dr(base, bufLen);
+
     // magic check: 'I','N'
-    if (buf[0] != 0x49 || buf[1] != 0x4E)
+    if (dr.ReadUInt8() != 0x49 || dr.ReadUInt8() != 0x4E)
         throw std::runtime_error("Invalid Install file magic");
 
-    HashSize_   = buf[3];
-    NumTags_    = ReadUInt16BE(buf + 4);
-    NumEntries_ = ReadUInt32BE(buf + 6);
+    // skip version byte at offset 2
+    dr.ReadUInt8();
 
-    size_t bytesPerTag = (NumEntries_ + 7) / 8;
-    size_t offs = 10;
+    // header fields
+    HashSize_   = dr.ReadUInt8();
+    NumTags_    = dr.ReadUInt16BE();
+    NumEntries_ = dr.ReadUInt32BE();
+
+    const size_t bytesPerTag = (NumEntries_ + 7) / 8;
 
     // parse tag entries
     Tags_.reserve(NumTags_);
     for (uint16_t i = 0; i < NumTags_; ++i) {
-        auto name = ReadNullTermString(buf, bufLen, offs);
-        offs += name.size() + 1;
 
-        uint16_t type = ReadUInt16BE(buf + offs);
-        offs += 2;
+        std::string name = dr.ReadNullTermString();
+        uint16_t type = dr.ReadUInt16BE();
 
-        std::vector<uint8_t> raw(bytesPerTag);
-        std::memcpy(raw.data(), buf + offs, bytesPerTag);
-        offs += bytesPerTag;
+        // raw bitmap
+        std::vector<uint8_t> raw = dr.ReadUint8Array(bytesPerTag);
 
+        // unpack bits
         for (size_t j = 0; j < bytesPerTag; ++j) {
             uint64_t x = raw[j];
-            raw[j] = static_cast<uint8_t>(
-                (x * 0x0202020202ULL & 0x010884422010ULL) % 1023
-            );
+            raw[j] = static_cast<uint8_t>((x * 0x0202020202ULL & 0x010884422010ULL) % 1023);
         }
 
         std::vector<bool> bits;
@@ -59,22 +61,21 @@ InstallInstance::InstallInstance(const std::string& path)
     // parse file entries
     Entries_.reserve(NumEntries_);
     for (uint32_t i = 0; i < NumEntries_; ++i) {
-        auto name = ReadNullTermString(buf, bufLen, offs);
+        // filename
+        std::string name = dr.ReadNullTermString();
         for (auto& c : name) if (c == '/') c = '\\';
-        offs += name.size() + 1;
 
-        std::vector<uint8_t> contentHash(HashSize_);
-        std::memcpy(contentHash.data(), buf + offs, HashSize_);
-        offs += HashSize_;
+        // content hash
+        std::vector<uint8_t> contentHash = dr.ReadUint8Array(HashSize_);
 
-        uint32_t sz = ReadUInt32BE(buf + offs);
-        offs += 4;
+        uint32_t sz = dr.ReadUInt32BE();
 
+        // collect tags for this entry
         std::vector<std::string> entryTags;
         entryTags.reserve(NumTags_);
         for (uint16_t t = 0; t < NumTags_; ++t) {
             if (Tags_[t].files[i]) {
-                entryTags.push_back(
+                entryTags.emplace_back(
                     std::to_string(Tags_[t].type) + "=" + Tags_[t].name
                 );
             }

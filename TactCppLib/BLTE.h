@@ -22,9 +22,6 @@ private:
     static bool TryDecrypt(const uint8_t* data, size_t dataSize,
                            int chunkIndex,
                            std::vector<uint8_t>& output);
-    static uint32_t ReadUInt32BE(const uint8_t* ptr);
-    static uint32_t ReadUInt24BE(const uint8_t* ptr);
-    static uint64_t ReadUInt64LE(const uint8_t* ptr);
 };
 
 #endif //BLTE_H

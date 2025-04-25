@@ -76,6 +76,7 @@ add_library(TactCppLib
 		TactCppLib/BuildInfo.h
 		TactCppLib/utils/TactConfigParser.cpp
 		TactCppLib/utils/TactConfigParser.h
+		TactCppLib/utils/DataReader.h
 )
 
 target_link_libraries(TactCppLib cpr::cpr)
