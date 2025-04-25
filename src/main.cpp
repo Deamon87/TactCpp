@@ -52,7 +52,7 @@ void HandleEKey(const std::string& eKeyHex, const std::optional<std::string>& fi
         !std::all_of(eKeyHex.begin(), eKeyHex.end(), [](char c){ return std::isxdigit(c)&&std::islower(c); }))
     {
         std::cout << "Skipping " << eKeyHex
-                  << ", invalid formatting for EKey (expected 32-char hex).\n";
+                  << ", invalid formatting for EKey (expected 32-char hex)." << std::endl << std::flush;;
         return;
     }
     ExtractionTarget t{ hexToBytes(eKeyHex), 0, filename.value_or(eKeyHex) };
@@ -65,13 +65,13 @@ void HandleCKey(const std::string& cKeyHex, const std::optional<std::string>& fi
         !std::all_of(cKeyHex.begin(), cKeyHex.end(), [](char c){ return std::isxdigit(c)&&std::islower(c); }))
     {
         std::cout << "Skipping " << cKeyHex
-                  << ", invalid formatting for CKey (expected 32-char hex).\n";
+                  << ", invalid formatting for CKey (expected 32-char hex)." << std::endl << std::flush;;
         return;
     }
     auto cKeyBytes = hexToBytes(cKeyHex);
     auto fileKeys = build.GetEncoding()->FindContentKey(cKeyBytes);
     if (fileKeys.empty()) {
-        std::cout << "Skipping " << cKeyHex << ", CKey not found in encoding.\n";
+        std::cout << "Skipping " << cKeyHex << ", CKey not found in encoding." << std::endl << std::flush;;
         return;
     }
     ExtractionTarget t{ fileKeys.key(0), fileKeys.decodedFileSize, filename.value_or(cKeyHex) };
@@ -84,7 +84,7 @@ void HandleFDID(const std::string& fdidStr, const std::optional<std::string>& fi
     try { fdid = std::stoul(fdidStr); }
     catch(...) {
         std::cout << "Skipping FDID " << fdidStr
-                  << ", invalid format (expected unsigned integer).\n";
+                  << ", invalid format (expected unsigned integer)." << std::endl << std::flush;;
         return;
     }
     auto entries = build.GetRoot()->GetEntriesByFDID(fdid);
@@ -163,10 +163,10 @@ void HandleFileName(const std::string& fname, const std::optional<std::string>& 
                 return !(e.tags | std::views::filter([](const auto &tag) { return tag == "4=US";})).empty();
             });
         if (usEntries!=entries.end()) {
-            std::cout << "Multiple results for " << fname << ", using US version..\n";
+            std::cout << "Multiple results for " << fname << ", using US version.." << std::endl << std::flush;;
             targetMd5 = usEntries->md5;
         } else {
-            std::cout << "Multiple results for " << fname<< ", using first result..\n";
+            std::cout << "Multiple results for " << fname<< ", using first result.." << std::endl << std::flush;;
         }
     }
 

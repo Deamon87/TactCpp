@@ -103,7 +103,7 @@ IndexInstance::GetIndexInfo(std::span<const uint8_t> eKeyTarget) const {
     else if (!isFileIndex_) {
         // only non-file-index archives have an offset
         if (footer_.offsetBytes == 2) {
-            offset = static_cast<int32_t>(dr.ReadUInt16BE());
+            offset = dr.ReadUInt16BE();
         } else {
             offset = dr.ReadInt32BE();
         }
@@ -124,10 +124,7 @@ std::vector<IndexInstance::Entry> IndexInstance::GetAllEntries() {
 
             DataReader dr(const_cast<uint8_t*>(entryPtr), entrySize_);
 
-            std::vector<uint8_t> eKey(footer_.keyBytes);
-            for (size_t k = 0; k < footer_.keyBytes; ++k) {
-                eKey[k] = dr.ReadUInt8();
-            }
+            std::vector<uint8_t> eKey = dr.ReadUint8Array(footer_.keyBytes);
 
             int32_t size   = 0;
             int32_t offset = -1;

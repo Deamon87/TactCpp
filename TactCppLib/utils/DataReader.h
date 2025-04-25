@@ -206,9 +206,11 @@ public:
     inline std::vector<uint8_t> ReadUint8Array(const std::size_t size) {
         assert(m_offset + size <= m_availableSize);
 
+        auto result = std::vector<uint8_t>(m_ptr + m_offset, m_ptr+m_offset + size);
+
         m_offset += size;
 
-        return std::vector<uint8_t>(m_ptr + m_offset, m_ptr+m_offset + size);
+        return std::move(result);
     }
 };
 #endif //DATAREADER_H

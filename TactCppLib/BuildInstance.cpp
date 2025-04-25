@@ -185,6 +185,10 @@ void BuildInstance::Load()
     }
 }
 
+std::vector<uint8_t> arr16ToVec(const std::array<uint8_t, 16> &arr16) {
+    return std::vector<uint8_t>(arr16.begin(), arr16.end());
+}
+
 std::vector<uint8_t> BuildInstance::OpenFileByFDID(uint32_t fileDataID)
 {
     if (!root_)
@@ -194,7 +198,7 @@ std::vector<uint8_t> BuildInstance::OpenFileByFDID(uint32_t fileDataID)
     if (entries.empty())
         throw std::runtime_error("File not found in root");
 
-    return OpenFileByCKey(MD5ToHexLower(entries[0].md5));
+    return OpenFileByCKey(arr16ToVec(entries[0].md5));
 }
 
 std::vector<uint8_t> BuildInstance::OpenFileByCKey(const std::string& cKey)

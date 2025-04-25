@@ -48,14 +48,7 @@ std::vector<uint8_t> BLTE::Decode(const std::vector<uint8_t>& data, uint64_t tot
         size_t compOffset = fixedHeaderSize + 1;
         size_t compSize   = data.size() - compOffset;
 
-        HandleDataBlock(
-            mode,
-            data.data() + compOffset,
-            compSize,
-            /*chunkIndex=*/0,
-            singleDecomp.data(),
-            singleDecomp.size()
-        );
+        HandleDataBlock( mode, data.data() + compOffset, compSize, 0, singleDecomp.data(), singleDecomp.size());
         return singleDecomp;
     }
 
@@ -94,13 +87,8 @@ std::vector<uint8_t> BLTE::Decode(const std::vector<uint8_t>& data, uint64_t tot
 
         char mode = static_cast<char>(data[compOffset]);
 
-        HandleDataBlock(
-            mode,
-            data.data() + compOffset + 1,
-            compSize - 1,
-            static_cast<int>(chunkIndex),
-            decompData.data() + decompOffset,
-            decompSize
+        HandleDataBlock( mode, data.data() + compOffset + 1, compSize - 1, static_cast<int>(chunkIndex),
+            decompData.data() + decompOffset, decompSize
         );
 
         infoOffset   += blockInfoSize;

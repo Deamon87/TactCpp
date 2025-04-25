@@ -51,9 +51,9 @@ void CDN::OpenLocal() {
         hasLocal_ = true;
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start).count();
-        std::cout << "Loaded local CASC indices in " << elapsed << "ms\n";
+        std::cout << "Loaded local CASC indices in " << elapsed << "ms" << std::endl << std::flush;
     } catch (const std::exception &e) {
-        std::cerr << "Failed to load CASC indices: " << e.what() << "\n";
+        std::cerr << "Failed to load CASC indices: " << e.what() << std::endl << std::flush;;
     }
 }
 
@@ -191,7 +191,7 @@ void CDN::LoadCDNs() {
     // TODO: ping measurement and sorting omitted for brevity
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start).count();
-    std::cout << "Loaded and sorted CDNs in " << elapsed << "ms\n";
+    std::cout << "Loaded and sorted CDNs in " << elapsed << "ms" << std::endl << std::flush;;
 }
 
 void CDN::LoadCASCIndices() {
@@ -308,19 +308,29 @@ std::vector<uint8_t> CDN::DownloadFile(
             std::string rangeHeader = std::to_string(offset) + "-" + std::to_string(offset + expectedSize - 1);
             session.SetHeader({{"Range", "bytes=" + rangeHeader}});
         }
+        auto fileSize = session.GetDownloadFileLength();
 
-        cpr::Response r = session.Get();
+        size_t readOfs = 0;
+        std::vector<uint8_t> resultFile(fileSize > 0 ? fileSize : 0);
+
+        cpr::Response r = session.Download(cpr::WriteCallback([&](const std::string &data, intptr_t userdata) -> bool {
+            if (resultFile.size() < (readOfs + data.size())) resultFile.resize(readOfs + data.size());
+
+            std::copy(data.begin(), data.end(), resultFile.begin() + readOfs);
+
+            readOfs += data.size();
+            return true;
+        }, 0));
+
         if (r.status_code == 200 || r.status_code == 206) {
             // Write to cache
 
             std::scoped_lock lock(fileLocks_[cachePath.string()]);
             std::filesystem::create_directories(cacheDir);
             std::ofstream out(cachePath, std::ios::binary);
-            out.write(r.text.c_str(), r.text.size());
+            out.write(reinterpret_cast<const char*>(resultFile.data()), resultFile.size());
 
-            // Return data
-            std::vector<uint8_t> buf(r.text.begin(), r.text.end());
-            return buf;
+            return std::move(resultFile);
         }
 
         std::cerr << "HTTP " << r.status_code << " downloading " << key << " from " << server << '\n';

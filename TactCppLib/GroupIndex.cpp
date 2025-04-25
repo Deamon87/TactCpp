@@ -155,15 +155,15 @@ std::string GroupIndex::Generate(
     }
     for (auto& f : futures) f.get();
 
-    std::cout << "Done loading index files, got " << Entries.size() << " entries\n";
+    std::cout << "Done loading index files, got " << Entries.size() << " entries" << std::endl << std::flush;
 
     // sort by EKey
-    std::cout << "Sorting entries by EKey\n";
+    std::cout << "Sorting entries by EKey" << std::endl << std::flush;
     std::sort(std::execution::par, Entries.begin(), Entries.end(),
         [](auto const& a, auto const& b){
             return std::memcmp(a.EKey.data(), b.EKey.data(), a.EKey.size()) < 0;
         });
-    std::cout << "Done sorting entries\n";
+    std::cout << "Done sorting entries" << std::endl << std::flush;
 
     // build footer metadata
     IndexFooter footer{
@@ -277,8 +277,7 @@ std::string GroupIndex::Generate(
     std::filesystem::create_directories(outDir);
     const std::string fname = (hash.empty() ? fullFooterHash : hash) + ".index";
     if (!hash.empty() && fullFooterHash != hash) {
-        throw std::runtime_error("Footer MD5 mismatch: expected " + hash +
-                                 ", got " + fullFooterHash);
+        throw std::runtime_error("Footer MD5 mismatch: expected " + hash +", got " + fullFooterHash);
     }
     std::ofstream out(outDir / fname, std::ios::binary);
     out.write(reinterpret_cast<char*>(buf.data()), buf.size());
