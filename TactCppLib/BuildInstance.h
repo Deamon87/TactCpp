@@ -38,26 +38,26 @@ public:
                                         uint64_t decodedSize = 0);
 
     // getters
-    std::shared_ptr<Config>             GetBuildConfig() const { return buildConfig_; }
-    std::shared_ptr<Config>             GetCDNConfig()   const { return cdnConfig_;   }
-    std::shared_ptr<TACTSharp::EncodingInstance>   GetEncoding()    const { return encoding_;    }
-    std::shared_ptr<RootInstance>       GetRoot()        const { return root_;        }
-    std::shared_ptr<InstallInstance>    GetInstall()     const { return install_;     }
-    std::shared_ptr<IndexInstance>      GetGroupIndex()  const { return groupIndex_;  }
-    std::shared_ptr<IndexInstance>      GetFileIndex()   const { return fileIndex_;   }
-    std::shared_ptr<CDN>                GetCDN()         const { return cdn_;         }
-    std::shared_ptr<Settings>           GetSettings()    const { return settings_;    }
+    const std::unique_ptr<Config>             &GetBuildConfig() const { return buildConfig_; }
+    const std::unique_ptr<Config>             &GetCDNConfig()   const { return cdnConfig_;   }
+    const std::unique_ptr<TACTSharp::EncodingInstance>   &GetEncoding()    const { return encoding_;    }
+    const std::unique_ptr<RootInstance>       &GetRoot()        const { return root_;        }
+    const std::unique_ptr<InstallInstance>    &GetInstall()     const { return install_;     }
+    const std::unique_ptr<IndexInstance>      &GetGroupIndex()  const { return groupIndex_;  }
+    const std::unique_ptr<IndexInstance>      &GetFileIndex()   const { return fileIndex_;   }
+    const std::unique_ptr<CDN>                &GetCDN()         const { return cdn_;         }
+    const std::unique_ptr<Settings>           &GetSettings()    const { return settings_;    }
 
 private:
-    std::shared_ptr<Config>           buildConfig_;
-    std::shared_ptr<Config>           cdnConfig_;
-    std::shared_ptr<TACTSharp::EncodingInstance> encoding_;
-    std::shared_ptr<RootInstance>     root_;
-    std::shared_ptr<InstallInstance>  install_;
-    std::shared_ptr<IndexInstance>    groupIndex_;
-    std::shared_ptr<IndexInstance>    fileIndex_;
-    std::shared_ptr<CDN>              cdn_;
-    std::shared_ptr<Settings>         settings_;
+    std::unique_ptr<Config>           buildConfig_;
+    std::unique_ptr<Config>           cdnConfig_;
+    std::unique_ptr<TACTSharp::EncodingInstance> encoding_;
+    std::unique_ptr<RootInstance>     root_;
+    std::unique_ptr<InstallInstance>  install_;
+    std::unique_ptr<IndexInstance>    groupIndex_;
+    std::unique_ptr<IndexInstance>    fileIndex_;
+    std::unique_ptr<CDN>              cdn_;
+    std::unique_ptr<Settings>         settings_;
 };
 
 

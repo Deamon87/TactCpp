@@ -17,7 +17,7 @@ public:
 
     // Returns (offset, size, archiveIndex). If not found: (-1, -1, -1)
     std::tuple<int32_t, int32_t, int16_t>
-    GetIndexInfo(std::span<const uint8_t> eKeyTarget) const;
+    GetIndexInfo(const std::vector<uint8_t> &eKeyTarget) const;
 
     struct Entry {
         std::vector<uint8_t> eKey;

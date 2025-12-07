@@ -235,12 +235,11 @@ int main(int argc, char* argv[]) {
         if (res.count("mode")) {
             auto m = res["mode"].as<std::string>();
             std::transform(m.begin(), m.end(), m.begin(), ::tolower);
-            if      (m=="list")     Mode = InputMode::List;
-            else if (m=="ekey"||m=="ehash") Mode = InputMode::EKey;
-            else if (m=="ckey"||m=="chash") Mode = InputMode::CKey;
-            else if (m=="id"||m=="fdid")    Mode = InputMode::FDID;
-            else if (m=="install"||m=="name"||m=="filename")
-                                       Mode = InputMode::FileName;
+            if      (m=="list")                              Mode = InputMode::List;
+            else if (m=="ekey"||m=="ehash")                  Mode = InputMode::EKey;
+            else if (m=="ckey"||m=="chash")                  Mode = InputMode::CKey;
+            else if (m=="id"||m=="fdid")                     Mode = InputMode::FDID;
+            else if (m=="install"||m=="name"||m=="filename") Mode = InputMode::FileName;
             else throw std::runtime_error("Invalid input mode");
         } else {
             throw std::runtime_error("No input mode specified");

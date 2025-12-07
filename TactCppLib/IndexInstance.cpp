@@ -41,7 +41,7 @@ IndexInstance::IndexInstance(const std::string &path, int16_t archiveIndex)
 }
 
 std::tuple<int32_t, int32_t, int16_t>
-IndexInstance::GetIndexInfo(std::span<const uint8_t> eKeyTarget) const {
+IndexInstance::GetIndexInfo(const std::vector<uint8_t> &eKeyTarget) const {
     // 1) Block-level binary search on TOC e-keys
     auto tocStart = fileData_ + ofsStartOfToc_;
     auto tocEnd = fileData_ + ofsEndOfTocEkeys_;

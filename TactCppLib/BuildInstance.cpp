@@ -12,15 +12,13 @@
 
 namespace fs = std::filesystem;
 
-BuildInstance::BuildInstance()
-{
-    settings_ = std::make_shared<Settings>();
-    cdn_ = std::make_shared<CDN>(*settings_);
+BuildInstance::BuildInstance() {
+    settings_ = std::make_unique<Settings>();
+    cdn_ = std::make_unique<CDN>(*settings_);
 }
 
-void BuildInstance::LoadConfigs(const std::string& buildConfigPath,
-                                const std::string& cdnConfigPath)
-{
+void BuildInstance::LoadConfigs(const std::string &buildConfigPath,
+                                const std::string &cdnConfigPath) {
     settings_->BuildConfig = buildConfigPath;
     settings_->CDNConfig = cdnConfigPath;
 
@@ -28,22 +26,18 @@ void BuildInstance::LoadConfigs(const std::string& buildConfigPath,
 
     // BuildConfig
     if (fs::exists(buildConfigPath)) {
-        buildConfig_ = std::make_shared<Config>(*cdn_, buildConfigPath, true);
-    }
-    else if (buildConfigPath.size() == 32
-          && std::all_of(buildConfigPath.begin(), buildConfigPath.end(), ::isxdigit))
-    {
-        buildConfig_ = std::make_shared<Config>(*cdn_, buildConfigPath, false);
+        buildConfig_ = std::make_unique<Config>(*cdn_, buildConfigPath, true);
+    } else if (buildConfigPath.size() == 32
+               && std::all_of(buildConfigPath.begin(), buildConfigPath.end(), ::isxdigit)) {
+        buildConfig_ = std::make_unique<Config>(*cdn_, buildConfigPath, false);
     }
 
     // CDNConfig
     if (fs::exists(cdnConfigPath)) {
-        cdnConfig_ = std::make_shared<Config>(*cdn_, cdnConfigPath, true);
-    }
-    else if (cdnConfigPath.size() == 32
-          && std::all_of(cdnConfigPath.begin(), cdnConfigPath.end(), ::isxdigit))
-    {
-        cdnConfig_ = std::make_shared<Config>(*cdn_, cdnConfigPath, false);
+        cdnConfig_ = std::make_unique<Config>(*cdn_, cdnConfigPath, true);
+    } else if (cdnConfigPath.size() == 32
+               && std::all_of(cdnConfigPath.begin(), cdnConfigPath.end(), ::isxdigit)) {
+        cdnConfig_ = std::make_unique<Config>(*cdn_, cdnConfigPath, false);
     }
 
     if (!buildConfig_ || !cdnConfig_)
@@ -54,8 +48,7 @@ void BuildInstance::LoadConfigs(const std::string& buildConfigPath,
     std::cout << "Configs loaded in " << std::ceil(ms) << "ms\n";
 }
 
-void BuildInstance::Load()
-{
+void BuildInstance::Load() {
     if (!buildConfig_ || !cdnConfig_)
         throw std::runtime_error("Configs not loaded");
 
@@ -71,29 +64,28 @@ void BuildInstance::Load()
         std::cout << "No group index found in CDN config, generating fresh group index...\n";
         GroupIndex newGen;
         auto hash = newGen.Generate(cdn_, *settings_, "", cdnConfig_->Values.at("archives"));
-        auto path = fs::path(settings_->CacheDir) / cdn_->ProductDirectory() / "data"/ (hash + ".index");
+        auto path = fs::path(settings_->CacheDir) / cdn_->ProductDirectory() / "data" / (hash + ".index");
 
-        groupIndex_ = std::make_shared<IndexInstance>(path.string());
-    }
-    else {
-        const auto& grp = itGroup->second;
+        groupIndex_ = std::make_unique<IndexInstance>(path.string());
+    } else {
+        const auto &grp = itGroup->second;
         fs::path idxOnDisk = fs::path(settings_->BaseDir.value_or("")) / "Data" / "indices" / (grp[0] + ".index");
         if (settings_->BaseDir.has_value() && fs::exists(idxOnDisk)) {
-            groupIndex_ = std::make_shared<IndexInstance>(idxOnDisk.string());
-        }
-        else {
-            auto idxCache = fs::path(settings_->CacheDir.string()) / cdn_->ProductDirectory() / "data" / (grp[0] + ".index");
+            groupIndex_ = std::make_unique<IndexInstance>(idxOnDisk.string());
+        } else {
+            auto idxCache =
+                fs::path(settings_->CacheDir.string()) / cdn_->ProductDirectory() / "data" / (grp[0] + ".index");
             if (!fs::exists(idxCache)) {
                 GroupIndex regen;
                 regen.Generate(cdn_, *settings_, grp[0], cdnConfig_->Values.at("archives"));
             }
-            groupIndex_ = std::make_shared<IndexInstance>(idxCache.string());
+            groupIndex_ = std::make_unique<IndexInstance>(idxCache.string());
         }
     }
     {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::steady_clock::now() - t0
-                  ).count();
+            std::chrono::steady_clock::now() - t0
+        ).count();
         std::cout << "Group index loaded in " << std::ceil(ms) << "ms\n";
     }
 
@@ -103,22 +95,21 @@ void BuildInstance::Load()
     if (itFile == cdnConfig_->Values.end())
         throw std::runtime_error("No file index found in CDN config");
 
-    const auto& fileIdx = itFile->second;
+    const auto &fileIdx = itFile->second;
     fs::path fileOnDisk = fs::path(settings_->BaseDir.value_or(""))
-                        / "Data"
-                        / "indices"
-                        / (fileIdx[0] + ".index");
+                          / "Data"
+                          / "indices"
+                          / (fileIdx[0] + ".index");
     if (!settings_->BaseDir.has_value() && fs::exists(fileOnDisk)) {
-        fileIndex_ = std::make_shared<IndexInstance>(fileOnDisk.string());
-    }
-    else {
+        fileIndex_ = std::make_unique<IndexInstance>(fileOnDisk.string());
+    } else {
         auto p = cdn_->GetFilePath("data", fileIdx[0] + ".index");
-        fileIndex_ = std::make_shared<IndexInstance>(p);
+        fileIndex_ = std::make_unique<IndexInstance>(p);
     }
     {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::steady_clock::now() - t0
-                  ).count();
+            std::chrono::steady_clock::now() - t0
+        ).count();
         std::cout << "File index loaded in " << std::ceil(ms) << "ms\n";
     }
 
@@ -126,16 +117,16 @@ void BuildInstance::Load()
     auto encSize = std::stoull(buildConfig_->Values.at("encoding-size")[0]);
     t0 = std::chrono::steady_clock::now();
     auto encPath = cdn_->GetDecodedFilePath(
-                       "data",
-                       buildConfig_->Values.at("encoding")[1],
-                       std::stoull(buildConfig_->Values.at("encoding-size")[1]),
-                       encSize
-                   );
-    encoding_ = std::make_shared<TACTSharp::EncodingInstance>(encPath, static_cast<int>(encSize));
+        "data",
+        buildConfig_->Values.at("encoding")[1],
+        std::stoull(buildConfig_->Values.at("encoding-size")[1]),
+        encSize
+    );
+    encoding_ = std::make_unique<TACTSharp::EncodingInstance>(encPath, static_cast<int>(encSize));
     {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::steady_clock::now() - t0
-                  ).count();
+            std::chrono::steady_clock::now() - t0
+        ).count();
         std::cout << "Encoding loaded in " << std::ceil(ms) << "ms\n";
     }
 
@@ -146,19 +137,19 @@ void BuildInstance::Load()
         throw std::runtime_error("No root key found in build config");
 
     auto rootBytes = hexToBytes(itRoot->second[0]);
-    auto rootKeys   = encoding_->FindContentKey(rootBytes);
+    auto rootKeys = encoding_->FindContentKey(rootBytes);
     if (rootKeys.empty())  // assumes implicit operator!()
         throw std::runtime_error("Root key not found in encoding");
 
     auto rootHex = bytesToHexLower(rootKeys.key(0));
-    root_ = std::make_shared<RootInstance>(
-                cdn_->GetDecodedFilePath("data", rootHex, 0, rootKeys.decodedFileSize),
-                *settings_
-            );
+    root_ = std::make_unique<RootInstance>(
+        cdn_->GetDecodedFilePath("data", rootHex, 0, rootKeys.decodedFileSize),
+        *settings_
+    );
     {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::steady_clock::now() - t0
-                  ).count();
+            std::chrono::steady_clock::now() - t0
+        ).count();
         std::cout << "Root loaded in " << std::ceil(ms) << "ms\n";
     }
 
@@ -169,18 +160,18 @@ void BuildInstance::Load()
         throw std::runtime_error("No install key found in build config");
 
     auto instBytes = hexToBytes(itInst->second[0]);
-    auto instKeys  = encoding_->FindContentKey(instBytes);
+    auto instKeys = encoding_->FindContentKey(instBytes);
     if (instKeys.empty())
         throw std::runtime_error("Install key not found in encoding");
 
     auto instHex = bytesToHexLower(instKeys.key(0));
-    install_ = std::make_shared<InstallInstance>(
-                   cdn_->GetDecodedFilePath("data", instHex, 0, instKeys.decodedFileSize)
-               );
+    install_ = std::make_unique<InstallInstance>(
+        cdn_->GetDecodedFilePath("data", instHex, 0, instKeys.decodedFileSize)
+    );
     {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::steady_clock::now() - t0
-                  ).count();
+            std::chrono::steady_clock::now() - t0
+        ).count();
         std::cout << "Install loaded in " << std::ceil(ms) << "ms\n";
     }
 }
@@ -189,8 +180,7 @@ std::vector<uint8_t> arr16ToVec(const std::array<uint8_t, 16> &arr16) {
     return std::vector<uint8_t>(arr16.begin(), arr16.end());
 }
 
-std::vector<uint8_t> BuildInstance::OpenFileByFDID(uint32_t fileDataID)
-{
+std::vector<uint8_t> BuildInstance::OpenFileByFDID(uint32_t fileDataID) {
     if (!root_)
         throw std::runtime_error("Root not loaded");
 
@@ -201,13 +191,11 @@ std::vector<uint8_t> BuildInstance::OpenFileByFDID(uint32_t fileDataID)
     return OpenFileByCKey(arr16ToVec(entries[0].md5));
 }
 
-std::vector<uint8_t> BuildInstance::OpenFileByCKey(const std::string& cKey)
-{
+std::vector<uint8_t> BuildInstance::OpenFileByCKey(const std::string &cKey) {
     return OpenFileByCKey(hexToBytes(cKey));
 }
 
-std::vector<uint8_t> BuildInstance::OpenFileByCKey(const std::vector<uint8_t>& cKey)
-{
+std::vector<uint8_t> BuildInstance::OpenFileByCKey(const std::vector<uint8_t> &cKey) {
     if (!encoding_)
         throw std::runtime_error("Encoding not loaded");
 
@@ -218,15 +206,11 @@ std::vector<uint8_t> BuildInstance::OpenFileByCKey(const std::vector<uint8_t>& c
     return OpenFileByEKey(encRes.key(0), encRes.decodedFileSize);
 }
 
-std::vector<uint8_t> BuildInstance::OpenFileByEKey(const std::string& eKey,
-                                                   uint64_t decodedSize)
-{
+std::vector<uint8_t> BuildInstance::OpenFileByEKey(const std::string &eKey, uint64_t decodedSize) {
     return OpenFileByEKey(hexToBytes(eKey), decodedSize);
 }
 
-std::vector<uint8_t> BuildInstance::OpenFileByEKey(const std::vector<uint8_t>& eKey,
-                                                   uint64_t decodedSize)
-{
+std::vector<uint8_t> BuildInstance::OpenFileByEKey(const std::vector<uint8_t> &eKey, uint64_t decodedSize) {
     if (!groupIndex_ || !fileIndex_)
         throw std::runtime_error("Indexes not loaded");
 
@@ -244,16 +228,14 @@ std::vector<uint8_t> BuildInstance::OpenFileByEKey(const std::vector<uint8_t>& e
                                  0,
                                  decodedSize,
                                  true);
-        }
-        else {
+        } else {
             data = cdn_->GetFile("data",
                                  bytesToHexLower(eKey),
                                  size,
                                  decodedSize,
                                  true);
         }
-    }
-    else {
+    } else {
         data = cdn_->GetFileFromArchive(bytesToHexLower(eKey),
                                         cdnConfig_->Values.at("archives")[archiveIdx],
                                         offset,

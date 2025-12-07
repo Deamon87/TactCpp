@@ -1,11 +1,14 @@
+#ifndef CASC_INDEX_INSTANCE_H
+#define CASC_INDEX_INSTANCE_H
+
 #include <windows.h>
 #include <string>
 #include <stdexcept>
 #include <tuple>
-#include <span>
 #include <cstdint>
 #include <algorithm>
 #include <cstring>
+#include <vector>
 
 #include "MemoryMappedFile.h"
 #include "utils/BinaryUtils.h"
@@ -68,7 +71,7 @@ public:
     struct FileArchiveData {int archiveOffset; int archiveSize; int archiveIndex;};
 
     // Returns tuple(offset, size, archiveIndex), or (-1,-1,-1) if not found
-     FileArchiveData GetIndexInfo(std::span<const uint8_t> eKeyTarget) {
+     FileArchiveData GetIndexInfo(const std::vector<uint8_t> &eKeyTarget) {
         if (eKeyTarget.size() < header.entryKeyBytes)
             return {-1, -1, -1};
 
@@ -112,3 +115,5 @@ public:
         return {archiveOff, dataSize, archiveIdx};
     }
 };
+
+#endif //CASC_INDEX_INSTANCE_H

@@ -5,6 +5,8 @@
 #ifndef WOWROOTFLAGS_H
 #define WOWROOTFLAGS_H
 
+#include <cstdint>
+
 namespace RootWoW {
     enum class LoadMode : uint32_t {
         Normal,
