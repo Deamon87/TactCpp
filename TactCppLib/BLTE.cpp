@@ -87,7 +87,7 @@ std::vector<uint8_t> BLTE::Decode(const std::vector<uint8_t>& data, uint64_t tot
 
         char mode = static_cast<char>(data[compOffset]);
 
-        HandleDataBlock( mode, data.data() + compOffset + 1, compSize - 1, static_cast<int>(chunkIndex),
+        HandleDataBlock( mode, data.data() + compOffset + 1, compSize, static_cast<int>(chunkIndex),
             decompData.data() + decompOffset, decompSize
         );
 
@@ -100,9 +100,11 @@ std::vector<uint8_t> BLTE::Decode(const std::vector<uint8_t>& data, uint64_t tot
 }
 
 void BLTE::HandleDataBlock(char mode,
-                           const uint8_t* compData, size_t compSize,
+                           const uint8_t* compData,
+                           size_t compSize,
                            int chunkIndex,
-                           uint8_t* decompData, size_t decompSize) {
+                           uint8_t* decompData,
+                           size_t decompSize) {
     switch (mode) {
         case 'N':
             std::memcpy(decompData, compData, decompSize);

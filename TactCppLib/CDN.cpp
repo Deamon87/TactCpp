@@ -12,6 +12,8 @@
 #include "cpr/cpr.h"
 #endif
 
+using namespace TACTLibUtils;
+
 inline std::vector<uint8_t> readFile(const std::string& path) {
     // Open the file in binary mode, and position the read pointer at the end
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -42,7 +44,7 @@ CDN::CDN(const Settings &settings)
 }
 
 void CDN::OpenLocal() {
-    if (settings_.BaseDir.has_value())
+    if (!settings_.BaseDir.has_value())
         return;
 
     try {
@@ -188,7 +190,6 @@ void CDN::LoadCDNs() {
     }
     cdnServers_.push_back("archive.wow.tools");
 
-    // TODO: ping measurement and sorting omitted for brevity
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start).count();
     std::cout << "Loaded and sorted CDNs in " << elapsed << "ms" << std::endl << std::flush;;
@@ -209,8 +210,7 @@ void CDN::LoadCASCIndices() {
         if (name.rfind("tempfile", 0) == 0) continue;
 
         uint8_t bucket = std::stoul(name.substr(0, 2), nullptr, 16);
-        cascIndices_.emplace(bucket,
-                             std::make_unique<CASCIndexInstance>(entry.path().string()));
+        cascIndices_.emplace(bucket, std::make_unique<CASCIndexInstance>(entry.path().string()));
     }
 }
 

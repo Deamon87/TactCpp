@@ -26,14 +26,14 @@ const std::unordered_map<std::string, RootWoW::LocaleFlags> RootInstance::String
 };
 
 // Constructor: load & parse the "root" file
-RootInstance::RootInstance(const std::string& path, const Settings& settings)
-  : m_loadedWith(settings.RootMode) {
-    // 1) Read entire file
-    auto fileSize = std::filesystem::file_size(path);
-    m_data.resize(fileSize);
+RootInstance::RootInstance(const std::string& path, const Settings& settings) : m_loadedWith(settings.RootMode) {
     std::ifstream f(path, std::ios::binary);
     if (!f) throw std::runtime_error("Cannot open " + path);
-    f.read(reinterpret_cast<char*>(m_data.data()), fileSize);
+
+    auto fileSize = std::filesystem::file_size(path);
+    m_data.resize(fileSize);
+
+    f.read((char*)(m_data.data()), fileSize);
 
     // 2) Wrap in DataReader
     DataReader dr(m_data.data(), m_data.size());

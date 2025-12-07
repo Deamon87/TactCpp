@@ -9,6 +9,8 @@
 
 #include "stringUtils.h"
 
+using namespace TACTLibUtils;
+
 void TactConfigParser::parse(
     const std::string& configText,
     const std::vector<std::string>& headerSearchTerms,

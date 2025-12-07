@@ -19,14 +19,7 @@
 
 class BuildInstance {
 public:
-    BuildInstance();
-
-    // load the build+CDN configs (path or 32-char hex ID)
-    void LoadConfigs(const std::string& buildConfigPath,
-                     const std::string& cdnConfigPath);
-
-    // populate indexes, encoding, root & install instances
-    void Load();
+    explicit BuildInstance(const Settings &settings_);
 
     // file‐opening helpers
     std::vector<uint8_t> OpenFileByFDID(uint32_t fileDataID);
@@ -46,18 +39,23 @@ public:
     const std::unique_ptr<IndexInstance>      &GetGroupIndex()  const { return groupIndex_;  }
     const std::unique_ptr<IndexInstance>      &GetFileIndex()   const { return fileIndex_;   }
     const std::unique_ptr<CDN>                &GetCDN()         const { return cdn_;         }
-    const std::unique_ptr<Settings>           &GetSettings()    const { return settings_;    }
 
+    // populate indexes, encoding, root & install instances
+    void Load();
 private:
-    std::unique_ptr<Config>           buildConfig_;
-    std::unique_ptr<Config>           cdnConfig_;
-    std::unique_ptr<TACTSharp::EncodingInstance> encoding_;
-    std::unique_ptr<RootInstance>     root_;
-    std::unique_ptr<InstallInstance>  install_;
-    std::unique_ptr<IndexInstance>    groupIndex_;
-    std::unique_ptr<IndexInstance>    fileIndex_;
-    std::unique_ptr<CDN>              cdn_;
-    std::unique_ptr<Settings>         settings_;
+    Settings settings_;
+
+    std::unique_ptr<Config>           buildConfig_ = nullptr;
+    std::unique_ptr<Config>           cdnConfig_= nullptr;
+    std::unique_ptr<TACTSharp::EncodingInstance> encoding_= nullptr;
+    std::unique_ptr<RootInstance>     root_= nullptr;
+    std::unique_ptr<InstallInstance>  install_= nullptr;
+    std::unique_ptr<IndexInstance>    groupIndex_= nullptr;
+    std::unique_ptr<IndexInstance>    fileIndex_= nullptr;
+    std::unique_ptr<CDN>              cdn_= nullptr;
+
+    // load the build+CDN configs (path or 32-char hex ID)
+    void LoadConfigs();
 };
 
 

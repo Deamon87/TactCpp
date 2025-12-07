@@ -18,7 +18,6 @@
 #include "../TactCppLib/BuildInfo.h"
 #include "../TactCppLib/utils/Jenkins96.h"
 #include "../TactCppLib/utils/stringUtils.h"
-#include "../TactCppLib/utils/TactConfigParser.h"
 
 namespace fs = std::filesystem;
 using namespace TACTSharp;
@@ -159,8 +158,13 @@ void HandleFileName(const std::string& fname, const std::optional<std::string>& 
     std::vector<uint8_t> targetMd5 = entries[0].md5;
     if (entries.size() > 1) {
         auto usEntries =
-            std::find_if(entries.begin(), entries.end(), [](auto &e) {
-                return !(e.tags | std::views::filter([](const auto &tag) { return tag == "4=US";})).empty();
+            std::find_if(entries.begin(), entries.end(),
+                         [](auto &e) {
+                return !(e.tags |
+                            std::views::filter([](const auto &tag) {
+                                return tag == "4=US";
+                            })
+                        ).empty();
             });
         if (usEntries!=entries.end()) {
             std::cout << "Multiple results for " << fname << ", using US version.." << std::endl << std::flush;;
@@ -174,8 +178,7 @@ void HandleFileName(const std::string& fname, const std::optional<std::string>& 
     if (fileKeys.empty())
         throw std::runtime_error("EKey not found in encoding");
 
-    ExtractionTarget t{ fileKeys.key(0), fileKeys.decodedFileSize,
-                       outName.value_or(fname) };
+    ExtractionTarget t{ fileKeys.key(0), fileKeys.decodedFileSize, outName.value_or(fname) };
     std::lock_guard lk(extractionMutex);
     extractionTargets.push_back(std::move(t));
 }
@@ -224,11 +227,13 @@ int main(int argc, char* argv[]) {
             return 0;
         }
 
-        if (res.count("buildconfig"))build.GetSettings()->BuildConfig = res["buildconfig"].as<std::string>();
-        if (res.count("cdnconfig"))  build.GetSettings()->CDNConfig   = res["cdnconfig"].as<std::string>();
-        if (res.count("product"))    build.GetSettings()->Product     = res["product"].as<std::string>();
-        if (res.count("region"))     build.GetSettings()->Region      = res["region"].as<std::string>();
-        if (res.count("locale"))     build.GetSettings()->Locale      = RootInstance::StringToLocaleFlag.at(res["locale"].as<std::string>());
+        Settings settings;
+
+        if (res.count("buildconfig"))settings.BuildConfigPathOrHash = res["buildconfig"].as<std::string>();
+        if (res.count("cdnconfig"))  settings.CDNConfigPathOrHash   = res["cdnconfig"].as<std::string>();
+        if (res.count("product"))    settings.Product         = res["product"].as<std::string>();
+        if (res.count("region"))     settings.Region          = res["region"].as<std::string>();
+        if (res.count("locale"))     settings.Locale          = RootInstance::StringToLocaleFlag.at(res["locale"].as<std::string>());
         if (res.count("inputvalue")) Input  = res["inputvalue"].as<std::string>();
         if (res.count("output"))     Output = res["output"].as<std::string>();
 
@@ -250,43 +255,15 @@ int main(int argc, char* argv[]) {
 
         // Load configs – from basedir or patch service
         if (res.count("basedir")) {
-            build.GetSettings()->BaseDir = res["basedir"].as<std::string>();
-
-            fs::path bp = fs::path(build.GetSettings()->BaseDir.value()) / ".build.info";
-            if (!fs::exists(bp)) throw std::runtime_error("No .build.info in basedir");
-            BuildInfo bi(bp.string(), *build.GetSettings(), *build.GetCDN());
-
-
-            auto matchedEntries = bi.Entries | std::views::filter([](const auto &rng) {
-                return rng.Product == build.GetSettings()->Product;
-            }) | std::views::take(1) | std::ranges::to<std::vector>();
-
-            if (matchedEntries.empty())
-                throw std::runtime_error("No build found for product " + build.GetSettings()->Product + " in .build.info, are you sure this product is installed?");
-
-            auto const &buildInfoEntry = matchedEntries[0];
-            build.GetSettings()->BuildConfig = buildInfoEntry.BuildConfig;
-            build.GetSettings()->CDNConfig = buildInfoEntry.CDNConfig;
-            build.GetCDN()->setProductDirectory(buildInfoEntry.CDNPath);
-
-        } else {
-            auto versions = build.GetCDN()->GetPatchServiceFile(build.GetSettings()->Product, "versions");
-            TactConfigParser::parse(versions, {"Region", "BuildConfig", "CDNConfig"}, [&](const auto &rec) {
-                if (build.GetSettings()->Region != rec.at("Region")) { return true;} // continue if region do no match
-
-                build.GetSettings()->BuildConfig = rec.at("BuildConfig");
-                build.GetSettings()->CDNConfig = rec.at("CDNConfig");
-
-                return false;
-            });
+            settings.BaseDir = res["basedir"].as<std::string>();
         }
 
-        if (build.GetSettings()->BuildConfig.value_or("").empty() || build.GetSettings()->CDNConfig.value_or("").empty()) {
+        if (settings.BuildConfig.empty() || settings.CDNConfig.empty()) {
             std::cerr << "Missing build or CDN config, exiting..\n";
             return 1;
         }
 
-        build.LoadConfigs(build.GetSettings()->BuildConfig.value(), build.GetSettings()->CDNConfig.value());
+        build = BuildInstance(settings);
 
         // Load
         auto t0 = std::chrono::high_resolution_clock::now();

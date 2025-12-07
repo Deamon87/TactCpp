@@ -37,17 +37,27 @@ public:
     // map from key to array of values
     std::unordered_map<std::string, std::vector<std::string>> Values;
 
-    Config(CDN& cdn, const std::string& path, bool isFile) {
+    explicit Config(const std::string& configContent) {
+        std::vector<std::string> lines;
+        lines = split(configContent, '\n');
+
+        parseConfig(lines);
+    }
+    explicit Config(CDN& cdn, const std::string& pathOrHash, bool isFile) {
         std::vector<std::string> lines;
 
         if (!isFile) {
             // load raw bytes from CDN and decode as UTF-8
-            std::vector<uint8_t> data = cdn.GetFile("config", path);
+            const std::string & hash = pathOrHash;
+
+            std::vector<uint8_t> data = cdn.GetFile("config", hash);
             std::string text(data.begin(), data.end());
             lines = split(text, '\n');
         }
         else {
             // read lines from local file
+            const std::string & path = pathOrHash;
+
             std::ifstream file(path);
             if (!file) {
                 throw std::runtime_error("Unable to open config file: " + path);
@@ -57,8 +67,10 @@ public:
                 lines.push_back(line);
             }
         }
+        parseConfig(lines);
+    }
 
-        // parse each line
+    void parseConfig(std::vector<std::string> &lines) {// parse each line
         for (auto& rawLine : lines) {
             auto parts = split(rawLine, '=');
             if (parts.size() > 1) {

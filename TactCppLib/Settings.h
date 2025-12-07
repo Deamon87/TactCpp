@@ -16,8 +16,12 @@ struct Settings {
     RootWoW::LocaleFlags  Locale       = RootWoW::LocaleFlags::enUS;
     RootWoW::LoadMode     RootMode     = RootWoW::LoadMode::Normal;
     std::optional<std::filesystem::path> BaseDir;
-    std::optional<std::string> BuildConfig;
-    std::optional<std::string> CDNConfig;
+    std::string BuildConfigPathOrHash;
+    std::string CDNConfigPathOrHash;
+
+    std::string BuildConfig;
+    std::string CDNConfig;
+
     std::filesystem::path CacheDir = "cache";
     bool        ListfileFallback = true;
     std::string ListfileURL   = "https://github.com/wowdev/wow-listfile/releases/latest/download/community-listfile.csv";

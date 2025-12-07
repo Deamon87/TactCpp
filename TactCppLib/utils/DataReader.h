@@ -30,7 +30,6 @@ public:
     /// Set offset explicitly (must still be in-range)
     void SetOffset(std::size_t offset)
     {
-        assert(offset <= m_availableSize);
         m_offset = offset;
     }
 

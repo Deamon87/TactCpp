@@ -6,34 +6,61 @@
 #include <cmath>
 #include <iostream>
 #include <algorithm>
+#include <ranges>
+#include <generator>
 
 #include "GroupIndex.h"
 #include "utils/stringUtils.h"
+#include "BuildInfo.h"
+#include "utils/TactConfigParser.h"
 
 namespace fs = std::filesystem;
+using namespace TACTLibUtils;
 
-BuildInstance::BuildInstance() {
-    settings_ = std::make_unique<Settings>();
-    cdn_ = std::make_unique<CDN>(*settings_);
+BuildInstance::BuildInstance(const Settings &settings): settings_(settings) {
 }
 
-void BuildInstance::LoadConfigs(const std::string &buildConfigPath,
-                                const std::string &cdnConfigPath) {
-    settings_->BuildConfig = buildConfigPath;
-    settings_->CDNConfig = cdnConfigPath;
+void BuildInstance::LoadConfigs() {
+    if (settings_.BaseDir.has_value() && (
+        (settings_.BuildConfigPathOrHash.empty() && settings_.BuildConfig.empty()) ||
+        (settings_.CDNConfigPathOrHash.empty() && settings_.CDNConfig.empty())
+    )) {
+        fs::path bp = fs::path(settings_.BaseDir.value()) / ".build.info";
+        if (!fs::exists(bp)) throw std::runtime_error("No .build.info in basedir");
+        BuildInfo bi(bp.string(), settings_, *cdn_);
+
+
+        auto matchedEntries = bi.Entries | std::views::filter([l_product = settings_.Product](const auto &rng) {
+            return rng.Product == l_product;
+        }) | std::views::take(1) | std::ranges::to<std::vector>();
+
+        if (matchedEntries.empty())
+            throw std::runtime_error("No build found for product " + settings_.Product +
+                                     " in .build.info, are you sure this product is installed?");
+
+        auto const &buildInfoEntry = matchedEntries[0];
+        settings_.BuildConfigPathOrHash = buildInfoEntry.BuildConfig;
+        settings_.CDNConfigPathOrHash = buildInfoEntry.CDNConfig;
+        cdn_->setProductDirectory(buildInfoEntry.CDNPath);
+    }
+    auto &buildConfigPath = settings_.BuildConfigPathOrHash;
+    auto &cdnConfigPath = settings_.CDNConfigPathOrHash;
 
     auto start = std::chrono::steady_clock::now();
 
     // BuildConfig
-    if (fs::exists(buildConfigPath)) {
+    if (!settings_.BuildConfig.empty()) {
+        buildConfig_ = std::make_unique<Config>(settings_.BuildConfig);
+    } else if (fs::exists(buildConfigPath)) {
         buildConfig_ = std::make_unique<Config>(*cdn_, buildConfigPath, true);
-    } else if (buildConfigPath.size() == 32
-               && std::all_of(buildConfigPath.begin(), buildConfigPath.end(), ::isxdigit)) {
+    } else if (buildConfigPath.size() == 32 && std::all_of(buildConfigPath.begin(), buildConfigPath.end(), ::isxdigit)) {
         buildConfig_ = std::make_unique<Config>(*cdn_, buildConfigPath, false);
     }
 
     // CDNConfig
-    if (fs::exists(cdnConfigPath)) {
+    if (!settings_.CDNConfig.empty()) {
+        cdnConfig_ = std::make_unique<Config>(settings_.CDNConfig);
+    } else if (fs::exists(cdnConfigPath)) {
         cdnConfig_ = std::make_unique<Config>(*cdn_, cdnConfigPath, true);
     } else if (cdnConfigPath.size() == 32
                && std::all_of(cdnConfigPath.begin(), cdnConfigPath.end(), ::isxdigit)) {
@@ -49,12 +76,26 @@ void BuildInstance::LoadConfigs(const std::string &buildConfigPath,
 }
 
 void BuildInstance::Load() {
-    if (!buildConfig_ || !cdnConfig_)
-        throw std::runtime_error("Configs not loaded");
+    cdn_ = std::make_unique<CDN>(settings_);
 
     // if a local base dir is set, switch CDN to local
-    if (!settings_->BaseDir.has_value())
+    if (settings_.BaseDir.has_value()) {
         cdn_->OpenLocal();
+        LoadConfigs();
+    } else {
+        auto versions = cdn_->GetPatchServiceFile(settings_.Product, "versions");
+        TactConfigParser::parse(versions, {"Region", "BuildConfig", "CDNConfig"}, [&](const auto &rec) {
+            if (settings_.Region != rec.at("Region")) { return true;} // continue if region do no match
+
+            settings_.BuildConfig = rec.at("BuildConfig");
+            settings_.CDNConfig = rec.at("CDNConfig");
+
+            return false;
+        });
+    }
+
+    if (!buildConfig_ || !cdnConfig_)
+        throw std::runtime_error("Configs not loaded");
 
     // --- Group index ---
     auto t0 = std::chrono::steady_clock::now();
@@ -63,21 +104,21 @@ void BuildInstance::Load() {
     if (itGroup == cdnVals.end()) {
         std::cout << "No group index found in CDN config, generating fresh group index...\n";
         GroupIndex newGen;
-        auto hash = newGen.Generate(cdn_, *settings_, "", cdnConfig_->Values.at("archives"));
-        auto path = fs::path(settings_->CacheDir) / cdn_->ProductDirectory() / "data" / (hash + ".index");
+        auto hash = newGen.Generate(cdn_, settings_, "", cdnConfig_->Values.at("archives"));
+        auto path = fs::path(settings_.CacheDir) / cdn_->ProductDirectory() / "data" / (hash + ".index");
 
         groupIndex_ = std::make_unique<IndexInstance>(path.string());
     } else {
         const auto &grp = itGroup->second;
-        fs::path idxOnDisk = fs::path(settings_->BaseDir.value_or("")) / "Data" / "indices" / (grp[0] + ".index");
-        if (settings_->BaseDir.has_value() && fs::exists(idxOnDisk)) {
+        fs::path idxOnDisk = fs::path(settings_.BaseDir.value_or("")) / "Data" / "indices" / (grp[0] + ".index");
+        if (settings_.BaseDir.has_value() && fs::exists(idxOnDisk)) {
             groupIndex_ = std::make_unique<IndexInstance>(idxOnDisk.string());
         } else {
             auto idxCache =
-                fs::path(settings_->CacheDir.string()) / cdn_->ProductDirectory() / "data" / (grp[0] + ".index");
+                fs::path(settings_.CacheDir.string()) / cdn_->ProductDirectory() / "data" / (grp[0] + ".index");
             if (!fs::exists(idxCache)) {
                 GroupIndex regen;
-                regen.Generate(cdn_, *settings_, grp[0], cdnConfig_->Values.at("archives"));
+                regen.Generate(cdn_, settings_, grp[0], cdnConfig_->Values.at("archives"));
             }
             groupIndex_ = std::make_unique<IndexInstance>(idxCache.string());
         }
@@ -96,11 +137,11 @@ void BuildInstance::Load() {
         throw std::runtime_error("No file index found in CDN config");
 
     const auto &fileIdx = itFile->second;
-    fs::path fileOnDisk = fs::path(settings_->BaseDir.value_or(""))
+    fs::path fileOnDisk = fs::path(settings_.BaseDir.value_or(""))
                           / "Data"
                           / "indices"
                           / (fileIdx[0] + ".index");
-    if (!settings_->BaseDir.has_value() && fs::exists(fileOnDisk)) {
+    if (!settings_.BaseDir.has_value() && fs::exists(fileOnDisk)) {
         fileIndex_ = std::make_unique<IndexInstance>(fileOnDisk.string());
     } else {
         auto p = cdn_->GetFilePath("data", fileIdx[0] + ".index");
@@ -144,7 +185,7 @@ void BuildInstance::Load() {
     auto rootHex = bytesToHexLower(rootKeys.key(0));
     root_ = std::make_unique<RootInstance>(
         cdn_->GetDecodedFilePath("data", rootHex, 0, rootKeys.decodedFileSize),
-        *settings_
+        settings_
     );
     {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(

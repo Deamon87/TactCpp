@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.0)
+cmake_minimum_required(VERSION 3.31)
 project(TactCpp)
 
 include(FetchContent)
@@ -96,7 +96,7 @@ add_library(TactCppLib STATIC
 target_link_libraries(TactCppLib cpr::cpr)
 target_link_libraries(TactCppLib zlib)
 
-set_property(TARGET TactCppLib PROPERTY CXX_STANDARD 20)
+set_property(TARGET TactCppLib PROPERTY CXX_STANDARD 23)
 set_property(TARGET TactCppLib PROPERTY CXX_STANDARD_REQUIRED ON)
 
 add_executable(TACTToolCpp src/main.cpp)

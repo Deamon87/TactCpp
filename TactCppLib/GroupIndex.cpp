@@ -15,6 +15,8 @@
 #include "utils/stringUtils.h"
 #include "utils/Bswap.h"
 
+using namespace TACTLibUtils;
+
 std::string md5(const uint8_t* data, uint32_t length) {
     static const uint32_t s[64] = {
          7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,  7, 12, 17, 22,
