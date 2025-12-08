@@ -24,7 +24,7 @@ struct EntryIterator {
     const uint8_t* ptr;
     size_t stride;
 
-    EntryIterator(const uint8_t* p, size_t s) : ptr(p), stride(s) {}
+    EntryIterator(const uint8_t* p, size_t entrySize) : ptr(p), stride(entrySize) {}
     reference operator*() const { return ptr; }
     EntryIterator& operator++() { ptr += stride; return *this; }
     EntryIterator& operator--() { ptr -= stride; return *this; }

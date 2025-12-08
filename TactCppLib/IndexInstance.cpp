@@ -42,6 +42,11 @@ IndexInstance::IndexInstance(const std::string &path, int16_t archiveIndex)
 
 std::tuple<int32_t, int32_t, int16_t>
 IndexInstance::GetIndexInfo(const std::vector<uint8_t> &eKeyTarget) const {
+    // Validate that memory-mapped file is still valid
+    if (!mmf_ || !mmf_->isOpen() || !fileData_) {
+        return {-1, -1, -1};
+    }
+    
     // 1) Block-level binary search on TOC e-keys
     auto tocStart = fileData_ + ofsStartOfToc_;
     auto tocEnd = fileData_ + ofsEndOfTocEkeys_;
@@ -114,6 +119,12 @@ IndexInstance::GetIndexInfo(const std::vector<uint8_t> &eKeyTarget) const {
 
 std::vector<IndexInstance::Entry> IndexInstance::GetAllEntries() {
     std::vector<Entry> entries;
+    
+    // Validate that memory-mapped file is still valid
+    if (!mmf_ || !mmf_->isOpen() || !fileData_) {
+        return entries;  // Return empty vector
+    }
+    
     const uint8_t *fileData = fileData_;
 
     for (int i = 0; i < numBlocks_; ++i) {

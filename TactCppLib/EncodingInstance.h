@@ -26,8 +26,8 @@ struct TableSchema {
     // fileSize: total file size
     // xKey: pointer to the key bytes to lookup
     // keyLen: length of xKey
-    // returns a pointer+length pair for the resolved page
-    std::pair<const uint8_t*, int64_t>
+    // returns an offset to fileData + length pair for the resolved page
+    std::pair<int64_t, int64_t>
     ResolvePage(const uint8_t* fileData, size_t fileSize,
                 const uint8_t* xKey, size_t keyLen) const;
 };

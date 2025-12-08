@@ -25,7 +25,6 @@ public:
     void*   data() const;
     size_t  size() const;
     bool    isOpen() const;
-    void    close();
 
 private:
     std::string filename_;
@@ -38,6 +37,8 @@ private:
 #else
     int         fd_;
 #endif
+
+    void close();
 };
 
 

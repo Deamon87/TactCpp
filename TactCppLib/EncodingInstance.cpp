@@ -17,7 +17,7 @@ EncodingInstance::EncodingInstance(const std::string &filePath, int fileSize) : 
     // open file
     m_file = std::make_shared<MemoryMappedFile>(filePath);
 
-    _fileSize = fileSize == -1 ? m_file->size() : fileSize;
+    _fileSize = fileSize == -1 ? m_file->size() : std::min<int>(fileSize, m_file->size());
 
     // map view
     _view = static_cast<const uint8_t *>(m_file->data());
@@ -95,10 +95,15 @@ EncodingResult EncodingInstance::FindContentKey(const std::vector<uint8_t>& cKey
 }
 
 EncodingResult EncodingInstance::FindContentKey(const uint8_t *keyPtr, int keyLength) const {
-    auto [ptr, sz] = _schema.cEKey.ResolvePage(_view, _fileSize,
-                                               keyPtr, keyLength);
+    // Validate that memory-mapped file is still valid
+    if (!m_file || !m_file->isOpen() || !_view) {
+        return EncodingInstance::Zero;
+    }
+    
+    auto [offset, sz] = _schema.cEKey.ResolvePage(_view, _fileSize, keyPtr, keyLength);
+    assert(offset + sz <= _fileSize);
 
-    DataReader reader(const_cast<uint8_t*>(ptr), sz);
+    DataReader reader(const_cast<uint8_t*>(_view + offset), sz);
 
     while (reader.GetOffset() < sz) {
         const std::size_t recordStart = reader.GetOffset();
@@ -111,14 +116,17 @@ EncodingResult EncodingInstance::FindContentKey(const uint8_t *keyPtr, int keyLe
 
         // Compare cKey
         std::size_t cKeyOff = reader.GetOffset();
-        if (SequenceEqual(ptr + cKeyOff, keyPtr, _schema.cKeySize)) {
+        assert(offset + cKeyOff + _schema.eKeySize <= _fileSize);
+        if (SequenceEqual(_view + offset + cKeyOff, keyPtr, _schema.cKeySize)) {
             // Read eKeys
             std::size_t eKeysOff = cKeyOff + _schema.cKeySize;
             std::size_t eKeysLen = std::size_t(cnt) * _schema.eKeySize;
-            assert(eKeysOff + eKeysLen <= sz);
 
-            std::vector<uint8_t> keys(ptr + eKeysOff,
-                                      ptr + eKeysOff + eKeysLen);
+            assert(eKeysOff + eKeysLen <= sz);
+            assert(offset + eKeysOff + eKeysLen <= _fileSize);
+
+            std::vector<uint8_t> keys(_view + offset + eKeysOff,
+                                      _view + offset + eKeysOff + eKeysLen);
             return EncodingResult{ cnt, std::move(keys), decSize };
         }
 
@@ -135,6 +143,11 @@ EncodingResult EncodingInstance::FindContentKey(const uint8_t *keyPtr, int keyLe
 
 std::pair<std::string, uint64_t>
 EncodingInstance::GetESpec(const std::vector<uint8_t>& target) {
+    // Validate that memory-mapped file is still valid
+    if (!m_file || !m_file->isOpen() || !_view) {
+        return { "", 0 };
+    }
+    
     // Lazy-load the spec strings (thread-safe)
     {
         std::lock_guard<std::mutex> lk(_specsMutex);
@@ -154,10 +167,12 @@ EncodingInstance::GetESpec(const std::vector<uint8_t>& target) {
     }
 
     // Resolve the page containing eKey specifications
-    auto [ptr, sz] = _schema.eKeySpec.ResolvePage(
+    auto [offset, sz] = _schema.eKeySpec.ResolvePage(
         _view, _fileSize, target.data(), target.size());
 
-    DataReader reader(const_cast<uint8_t*>(ptr), sz);
+    assert(offset + sz <= _fileSize);
+
+    DataReader reader(const_cast<uint8_t*>(_view + offset), sz);
 
     // Each record is: [eKey (_schema.eKeySize bytes)] [idx (4-byte BE)] [encSize (5-byte BE)]
     const std::size_t recordSize = _schema.eKeySize + 4 + 5;
@@ -167,7 +182,8 @@ EncodingInstance::GetESpec(const std::vector<uint8_t>& target) {
         const std::size_t recOff = reader.GetOffset();
 
         // Compare the eKey prefix
-        if (SequenceEqual(ptr + recOff, target.data(), _schema.eKeySize)) {
+        assert(offset + recOff + _schema.eKeySize <= _fileSize);
+        if (SequenceEqual(_view + offset + recOff, target.data(), _schema.eKeySize)) {
             // Advance past the eKey
             reader.SetOffset(recOff + _schema.eKeySize);
 
@@ -188,7 +204,7 @@ EncodingInstance::GetESpec(const std::vector<uint8_t>& target) {
 }
 
 // TableSchema implementation
-std::pair<const uint8_t*, int64_t>
+std::pair<int64_t, int64_t>
 TableSchema::ResolvePage(const uint8_t* fileData, size_t fileSize,
                          const uint8_t* xKey, size_t keyLen) const
 {
@@ -204,13 +220,13 @@ TableSchema::ResolvePage(const uint8_t* fileData, size_t fileSize,
     );
     // If at the beginning, no lower entry
     if (it == endIt)
-        return { nullptr, 0 };
+        return { 0, 0 };
 
     size_t index = std::distance(beginIt, --it);
     size_t pageOff = pages.start + index * pageSize;
 
     if (pageOff + pageSize > fileSize)
-        return { nullptr, 0 };
+        return { 0, 0 };
 
-    return { fileData + pageOff, pageSize };
+    return { pageOff, pageSize };
 }

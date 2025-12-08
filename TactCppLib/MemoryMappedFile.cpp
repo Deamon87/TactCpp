@@ -85,26 +85,38 @@ size_t MemoryMappedFile::size() const {
 
 bool MemoryMappedFile::isOpen() const {
 #ifdef _WIN32
-    return data_ != nullptr;
+    return data_ != nullptr && 
+           mappingHandle_ != NULL && 
+           fileHandle_ != INVALID_HANDLE_VALUE;
 #else
-    return data_ != MAP_FAILED && data_ != nullptr;
+    return data_ != MAP_FAILED && data_ != nullptr && fd_ >= 0;
 #endif
 }
 
 void MemoryMappedFile::close() {
     if (!isOpen()) return;
 #ifdef _WIN32
-    UnmapViewOfFile(data_);
-    CloseHandle(mappingHandle_);
-    CloseHandle(fileHandle_);
-    mappingHandle_ = NULL;
-    fileHandle_    = INVALID_HANDLE_VALUE;
-    data_          = nullptr;
+    if (data_) {
+        UnmapViewOfFile(data_);
+        data_ = nullptr;  // Set immediately after unmapping to prevent reuse
+    }
+    if (mappingHandle_ && mappingHandle_ != NULL) {
+        CloseHandle(mappingHandle_);
+        mappingHandle_ = NULL;
+    }
+    if (fileHandle_ && fileHandle_ != INVALID_HANDLE_VALUE) {
+        CloseHandle(fileHandle_);
+        fileHandle_ = INVALID_HANDLE_VALUE;
+    }
 #else
-    munmap(data_, size_);
-    ::close(fd_);
-    fd_   = -1;
-    data_ = nullptr;
+    if (data_ && data_ != MAP_FAILED) {
+        munmap(data_, size_);
+        data_ = nullptr;
+    }
+    if (fd_ >= 0) {
+        ::close(fd_);
+        fd_ = -1;
+    }
 #endif
     size_ = 0;
 }
