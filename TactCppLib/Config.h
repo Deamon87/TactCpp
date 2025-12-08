@@ -39,9 +39,7 @@ public:
     std::unordered_map<std::string, std::vector<std::string>> Values;
 
     ~TactConfig() {
-        //__debugbreak();
-        Values.clear();
-        std::cout << "Config destroyed" << std::endl;
+//        std::cout << "Config destroyed" << std::endl;
     }
 
     explicit TactConfig(const std::string& configContent) {

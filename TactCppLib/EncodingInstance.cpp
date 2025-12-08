@@ -214,7 +214,7 @@ TableSchema::ResolvePage(const uint8_t* fileData, size_t fileSize,
     EntryIterator beginIt(fileData + header.start, headerEntrySize);
     EntryIterator endIt(fileData + header.end, headerEntrySize);
 
-    auto it = std::lower_bound(beginIt, endIt, xKey,
+    auto it = std::upper_bound(beginIt, endIt, xKey,
         [keyLen](const uint8_t* rec, const uint8_t* needle) {
             return std::memcmp(rec, needle, keyLen) < 0;
         }
@@ -228,6 +228,10 @@ TableSchema::ResolvePage(const uint8_t* fileData, size_t fileSize,
 
     if (pageOff + pageSize > fileSize)
         return { 0, 0 };
+
+//    if (std::memcmp(fileData + header.start + pageOff, xKey, keyLen) != 0) {
+//        return { 0, 0 };
+//    }
 
     return { pageOff, pageSize };
 }

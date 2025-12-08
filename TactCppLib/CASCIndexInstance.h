@@ -67,7 +67,7 @@ public:
     }
 
     ~CASCIndexInstance() {
-        std::cout << "CASCIndexInstance destroyed" << std::endl;
+//        std::cout << "CASCIndexInstance destroyed" << std::endl;
     }
 
     struct FileArchiveData {int archiveOffset; int archiveSize; int archiveIndex;};
