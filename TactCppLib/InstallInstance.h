@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <memory>
 #include "MemoryMappedFile.h"
 
 struct InstallTagEntry {
@@ -26,12 +27,13 @@ struct InstallFileEntry {
 class InstallInstance {
 public:
     explicit InstallInstance(const std::string& path);
+    ~InstallInstance();
 
     const std::vector<InstallTagEntry>&   getTags()    const;
     const std::vector<InstallFileEntry>&  getEntries() const;
 
 private:
-    MemoryMappedFile                        mmf_;
+    std::shared_ptr<MemoryMappedFile>       mmf_;
     uint8_t                                 HashSize_;
     uint16_t                                NumTags_;
     uint32_t                                NumEntries_;

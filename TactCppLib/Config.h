@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <iostream>
 
 #include "CDN.h"
 
@@ -32,18 +33,24 @@ inline std::vector<std::string> split(const std::string& s, char delim) {
     return elems;
 }
 
-class Config {
+class TactConfig {
 public:
     // map from key to array of values
     std::unordered_map<std::string, std::vector<std::string>> Values;
 
-    explicit Config(const std::string& configContent) {
+    ~TactConfig() {
+        //__debugbreak();
+        Values.clear();
+        std::cout << "Config destroyed" << std::endl;
+    }
+
+    explicit TactConfig(const std::string& configContent) {
         std::vector<std::string> lines;
         lines = split(configContent, '\n');
 
         parseConfig(lines);
     }
-    explicit Config(CDN& cdn, const std::string& pathOrHash, bool isFile) {
+    explicit TactConfig(CDN& cdn, const std::string& pathOrHash, bool isFile) {
         std::vector<std::string> lines;
 
         if (!isFile) {
@@ -82,7 +89,7 @@ public:
                 for (auto& tok : tokens) {
                     tok = trim(tok);
                 }
-                Values.emplace(std::move(key), std::move(tokens));
+                Values.emplace(key, tokens);
             }
         }
     }

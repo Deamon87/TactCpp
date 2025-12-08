@@ -20,6 +20,7 @@
 class BuildInstance {
 public:
     explicit BuildInstance(const Settings &settings_);
+    ~BuildInstance();
 
     // file‐opening helpers
     std::vector<uint8_t> OpenFileByFDID(uint32_t fileDataID);
@@ -31,8 +32,8 @@ public:
                                         uint64_t decodedSize = 0);
 
     // getters
-    const std::unique_ptr<Config>             &GetBuildConfig() const { return buildConfig_; }
-    const std::unique_ptr<Config>             &GetCDNConfig()   const { return cdnConfig_;   }
+    const std::unique_ptr<TactConfig>             &GetBuildConfig() const { return buildConfig_; }
+    const std::unique_ptr<TactConfig>             &GetCDNConfig()   const { return cdnConfig_;   }
     const std::unique_ptr<TACTSharp::EncodingInstance>   &GetEncoding()    const { return encoding_;    }
     const std::unique_ptr<RootInstance>       &GetRoot()        const { return root_;        }
     const std::unique_ptr<InstallInstance>    &GetInstall()     const { return install_;     }
@@ -45,8 +46,8 @@ public:
 private:
     Settings settings_;
 
-    std::unique_ptr<Config>           buildConfig_ = nullptr;
-    std::unique_ptr<Config>           cdnConfig_= nullptr;
+    std::unique_ptr<TactConfig>           buildConfig_ = nullptr;
+    std::unique_ptr<TactConfig>           cdnConfig_= nullptr;
     std::unique_ptr<TACTSharp::EncodingInstance> encoding_= nullptr;
     std::unique_ptr<RootInstance>     root_= nullptr;
     std::unique_ptr<InstallInstance>  install_= nullptr;

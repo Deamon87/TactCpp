@@ -20,6 +20,10 @@ using namespace TACTLibUtils;
 BuildInstance::BuildInstance(const Settings &settings): settings_(settings) {
 }
 
+BuildInstance::~BuildInstance() {
+//    std::cout << "BuildInstance destroyed" << std::endl << std::flush;
+}
+
 void BuildInstance::LoadConfigs() {
     if (settings_.BaseDir.has_value() && (
         (settings_.BuildConfigPathOrHash.empty() && settings_.BuildConfig.empty()) ||
@@ -50,21 +54,21 @@ void BuildInstance::LoadConfigs() {
 
     // BuildConfig
     if (!settings_.BuildConfig.empty()) {
-        buildConfig_ = std::make_unique<Config>(settings_.BuildConfig);
+        buildConfig_ = std::make_unique<TactConfig>(settings_.BuildConfig);
     } else if (fs::exists(buildConfigPath)) {
-        buildConfig_ = std::make_unique<Config>(*cdn_, buildConfigPath, true);
+        buildConfig_ = std::make_unique<TactConfig>(*cdn_, buildConfigPath, true);
     } else if (buildConfigPath.size() == 32 && std::all_of(buildConfigPath.begin(), buildConfigPath.end(), ::isxdigit)) {
-        buildConfig_ = std::make_unique<Config>(*cdn_, buildConfigPath, false);
+        buildConfig_ = std::make_unique<TactConfig>(*cdn_, buildConfigPath, false);
     }
 
     // CDNConfig
     if (!settings_.CDNConfig.empty()) {
-        cdnConfig_ = std::make_unique<Config>(settings_.CDNConfig);
+        cdnConfig_ = std::make_unique<TactConfig>(settings_.CDNConfig);
     } else if (fs::exists(cdnConfigPath)) {
-        cdnConfig_ = std::make_unique<Config>(*cdn_, cdnConfigPath, true);
+        cdnConfig_ = std::make_unique<TactConfig>(*cdn_, cdnConfigPath, true);
     } else if (cdnConfigPath.size() == 32
                && std::all_of(cdnConfigPath.begin(), cdnConfigPath.end(), ::isxdigit)) {
-        cdnConfig_ = std::make_unique<Config>(*cdn_, cdnConfigPath, false);
+        cdnConfig_ = std::make_unique<TactConfig>(*cdn_, cdnConfigPath, false);
     }
 
     if (!buildConfig_ || !cdnConfig_)

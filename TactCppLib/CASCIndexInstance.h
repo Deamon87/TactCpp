@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstring>
 #include <vector>
+#include <iostream>
 
 #include "MemoryMappedFile.h"
 #include "utils/BinaryUtils.h"
@@ -66,6 +67,7 @@ public:
     }
 
     ~CASCIndexInstance() {
+        std::cout << "CASCIndexInstance destroyed" << std::endl;
     }
 
     struct FileArchiveData {int archiveOffset; int archiveSize; int archiveIndex;};

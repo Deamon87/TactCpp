@@ -4,6 +4,7 @@
 #include <cassert>
 #include <chrono>
 #include <thread>
+#include <iostream>
 
 #include "utils/DataReader.h"
 
@@ -32,7 +33,7 @@ EncodingInstance::EncodingInstance(const std::string &filePath, int fileSize) : 
 }
 
 EncodingInstance::~EncodingInstance() {
-
+//    std::cout << "EncodingInstance destroyed" << std::endl;
 }
 
 void EncodingInstance::ReadHeader(uint8_t& version, EncodingSchema& schema) {
@@ -143,63 +144,63 @@ EncodingResult EncodingInstance::FindContentKey(const uint8_t *keyPtr, int keyLe
 
 std::pair<std::string, uint64_t>
 EncodingInstance::GetESpec(const std::vector<uint8_t>& target) {
-    // Validate that memory-mapped file is still valid
-    if (!m_file || !m_file->isOpen() || !_view) {
-        return { "", 0 };
-    }
-    
-    // Lazy-load the spec strings (thread-safe)
-    {
-        std::lock_guard<std::mutex> lk(_specsMutex);
-        if (_encodingSpecs.empty()) {
-            const std::size_t start  = _schema.encodingSpec.start;
-            const std::size_t end    = _schema.encodingSpec.end;
-            const std::size_t length = end - start;
-
-            // Wrap the spec region in a DataReader
-            DataReader specReader(const_cast<uint8_t*>(_view + start), length);
-
-            // Read all NUL-terminated strings until we exhaust the region
-            while (specReader.GetOffset() < length) {
-                _encodingSpecs.push_back(specReader.ReadNullTermString());
-            }
-        }
-    }
-
-    // Resolve the page containing eKey specifications
-    auto [offset, sz] = _schema.eKeySpec.ResolvePage(
-        _view, _fileSize, target.data(), target.size());
-
-    assert(offset + sz <= _fileSize);
-
-    DataReader reader(const_cast<uint8_t*>(_view + offset), sz);
-
-    // Each record is: [eKey (_schema.eKeySize bytes)] [idx (4-byte BE)] [encSize (5-byte BE)]
-    const std::size_t recordSize = _schema.eKeySize + 4 + 5;
-
-    // Scan through records
-    while (reader.GetOffset() + recordSize <= sz) {
-        const std::size_t recOff = reader.GetOffset();
-
-        // Compare the eKey prefix
-        assert(offset + recOff + _schema.eKeySize <= _fileSize);
-        if (SequenceEqual(_view + offset + recOff, target.data(), _schema.eKeySize)) {
-            // Advance past the eKey
-            reader.SetOffset(recOff + _schema.eKeySize);
-
-            // Read the index and size
-            uint32_t idx     = reader.ReadInt32BE();
-            uint64_t encSize = reader.ReadUInt40BE();
-
-            // Return the matching spec string and size
-            return { _encodingSpecs.at(idx), encSize };
-        }
-
-        // No match: skip the entire record
-        reader.SetOffset(recOff + recordSize);
-    }
-
-    // Not found
+//    // Validate that memory-mapped file is still valid
+//    if (!m_file || !m_file->isOpen() || !_view) {
+//        return { "", 0 };
+//    }
+//
+//    // Lazy-load the spec strings (thread-safe)
+//    {
+//        std::lock_guard<std::mutex> lk(_specsMutex);
+//        if (_encodingSpecs.empty()) {
+//            const std::size_t start  = _schema.encodingSpec.start;
+//            const std::size_t end    = _schema.encodingSpec.end;
+//            const std::size_t length = end - start;
+//
+//            // Wrap the spec region in a DataReader
+//            DataReader specReader(const_cast<uint8_t*>(_view + start), length);
+//
+//            // Read all NUL-terminated strings until we exhaust the region
+//            while (specReader.GetOffset() < length) {
+//                _encodingSpecs.push_back(specReader.ReadNullTermString());
+//            }
+//        }
+//    }
+//
+//    // Resolve the page containing eKey specifications
+//    auto [offset, sz] = _schema.eKeySpec.ResolvePage(
+//        _view, _fileSize, target.data(), target.size());
+//
+//    assert(offset + sz <= _fileSize);
+//
+//    DataReader reader(const_cast<uint8_t*>(_view + offset), sz);
+//
+//    // Each record is: [eKey (_schema.eKeySize bytes)] [idx (4-byte BE)] [encSize (5-byte BE)]
+//    const std::size_t recordSize = _schema.eKeySize + 4 + 5;
+//
+//    // Scan through records
+//    while (reader.GetOffset() + recordSize <= sz) {
+//        const std::size_t recOff = reader.GetOffset();
+//
+//        // Compare the eKey prefix
+//        assert(offset + recOff + _schema.eKeySize <= _fileSize);
+//        if (SequenceEqual(_view + offset + recOff, target.data(), _schema.eKeySize)) {
+//            // Advance past the eKey
+//            reader.SetOffset(recOff + _schema.eKeySize);
+//
+//            // Read the index and size
+//            uint32_t idx     = reader.ReadInt32BE();
+//            uint64_t encSize = reader.ReadUInt40BE();
+//
+//            // Return the matching spec string and size
+//            return { _encodingSpecs.at(idx), encSize };
+//        }
+//
+//        // No match: skip the entire record
+//        reader.SetOffset(recOff + recordSize);
+//    }
+//
+//    // Not found
     return { "", 0 };
 }
 

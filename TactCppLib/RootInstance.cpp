@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <algorithm>
+#include <iostream>
 
 #include "utils/DataReader.h"
 
@@ -144,6 +145,10 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings) : 
         // advance past the entire block
         dr.SetOffset(blockStart + blockSize);
     }
+}
+
+RootInstance::~RootInstance() {
+//    std::cout << "RootInstance destroyed" << std::endl;
 }
 
 // Query methods

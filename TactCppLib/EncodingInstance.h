@@ -89,8 +89,8 @@ private:
     const uint8_t*        _view         = nullptr;
 
     EncodingSchema        _schema;
-    mutable std::vector<std::string> _encodingSpecs;
-    mutable std::mutex    _specsMutex;
+//    mutable std::vector<std::string> _encodingSpecs;
+//    mutable std::mutex    _specsMutex;
 };
 }
 

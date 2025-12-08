@@ -43,6 +43,10 @@ CDN::CDN(const Settings &settings)
     : settings_(settings) {
 }
 
+CDN::~CDN() {
+//    std::cout << "CDN destroyed" << std::endl;
+}
+
 void CDN::OpenLocal() {
     if (!settings_.BaseDir.has_value())
         return;

@@ -1,4 +1,5 @@
 #include "MemoryMappedFile.h"
+#include <iostream>
 MemoryMappedFile::MemoryMappedFile(const std::string& filename,
                                    bool write,
                                    size_t length)
@@ -73,6 +74,7 @@ MemoryMappedFile::MemoryMappedFile(const std::string& filename,
 
 MemoryMappedFile::~MemoryMappedFile() {
     close();
+//    std::cout << "MemoryMappedFile destroyed" << std::endl;
 }
 
 void* MemoryMappedFile::data() const {
@@ -94,28 +96,61 @@ bool MemoryMappedFile::isOpen() const {
 }
 
 void MemoryMappedFile::close() {
-    if (!isOpen()) return;
+    // Early exit if already closed - check individual components since
+    // isOpen() might return false even if some resources need cleanup
+    bool anythingOpen = false;
 #ifdef _WIN32
+    anythingOpen = (data_ != nullptr) || 
+                   (mappingHandle_ != NULL) || 
+                   (fileHandle_ != INVALID_HANDLE_VALUE);
+#else
+    anythingOpen = (data_ != nullptr && data_ != MAP_FAILED) || (fd_ >= 0);
+#endif
+    if (!anythingOpen) return;
+
+#ifdef _WIN32
+    // Close in reverse order of creation: view -> mapping -> file
     if (data_) {
-        UnmapViewOfFile(data_);
-        data_ = nullptr;  // Set immediately after unmapping to prevent reuse
+        BOOL result = UnmapViewOfFile(data_);
+        // Always nullify pointer even if unmap fails to prevent use-after-free
+        data_ = nullptr;
+        if (!result) {
+            // Log error but continue cleanup
+            // In production, consider logging: GetLastError()
+            std::cout << "UnmapViewOfFile returned error" << std::endl;
+        }
     }
     if (mappingHandle_ && mappingHandle_ != NULL) {
-        CloseHandle(mappingHandle_);
+        BOOL result = CloseHandle(mappingHandle_);
         mappingHandle_ = NULL;
+        if (!result) {
+            // Log error but continue cleanup
+            std::cout << "CloseHandle returned error at " << __LINE__ << std::endl;
+        }
     }
     if (fileHandle_ && fileHandle_ != INVALID_HANDLE_VALUE) {
-        CloseHandle(fileHandle_);
+        BOOL result = CloseHandle(fileHandle_);
         fileHandle_ = INVALID_HANDLE_VALUE;
+        if (!result) {
+            // Log error but continue cleanup
+
+            std::cout << "CloseHandle returned error at " << __LINE__ << std::endl;
+        }
     }
 #else
     if (data_ && data_ != MAP_FAILED) {
-        munmap(data_, size_);
+        int result = munmap(data_, size_);
         data_ = nullptr;
+        if (result != 0) {
+            // Log error but continue cleanup
+        }
     }
     if (fd_ >= 0) {
-        ::close(fd_);
+        int result = ::close(fd_);
         fd_ = -1;
+        if (result != 0) {
+            // Log error but continue cleanup
+        }
     }
 #endif
     size_ = 0;

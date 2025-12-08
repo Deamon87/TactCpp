@@ -1,5 +1,6 @@
 #include "IndexInstance.h"
 #include <vector>
+#include <iostream>
 #include <algorithm>
 #include <cstring>
 #include <cmath>
@@ -39,6 +40,10 @@ IndexInstance::IndexInstance(const std::string &path, int16_t archiveIndex)
     ofsStartOfToc_ = static_cast<size_t>(numBlocks_) * blockSizeBytes_;
     ofsEndOfTocEkeys_ = ofsStartOfToc_ + static_cast<size_t>(footer_.keyBytes) * numBlocks_;
 }
+
+IndexInstance::~IndexInstance() {
+//    std::cout << "IndexInstance destroyed" << std::endl << std::flush;
+};
 
 std::tuple<int32_t, int32_t, int16_t>
 IndexInstance::GetIndexInfo(const std::vector<uint8_t> &eKeyTarget) const {

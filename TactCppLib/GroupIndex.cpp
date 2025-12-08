@@ -95,6 +95,9 @@ std::string md5(const uint8_t* data, uint32_t length) {
     return std::string(buf);
 }
 
+GroupIndex::~GroupIndex() {
+//    std::cout << "GroupIndex destroyed" << std::endl;
+}
 
 struct IndexFooter {
     uint8_t formatRevision;

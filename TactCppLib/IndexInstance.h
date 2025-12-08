@@ -13,7 +13,7 @@ class IndexInstance {
 public:
     // Construct from file path; optional archiveIndex for group archives
     IndexInstance(const std::string& path, int16_t archiveIndex = -1);
-    ~IndexInstance() = default;
+    ~IndexInstance();
 
     // Returns (offset, size, archiveIndex). If not found: (-1, -1, -1)
     std::tuple<int32_t, int32_t, int16_t>

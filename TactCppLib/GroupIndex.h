@@ -23,6 +23,7 @@ class GroupIndex {
     std::mutex entryMutex;
 
 public:
+    ~GroupIndex();
     /// Generates (or validates) the merged group .index file.
     /// @param hash   expected filename-hash, or empty to auto-compute
     /// @return the final index filename (MD5 footer)

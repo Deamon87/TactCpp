@@ -15,6 +15,7 @@
 class CDN {
 public:
     explicit CDN(const Settings& settings);
+    ~CDN();
 
     // Load local CASC indices if available
     void OpenLocal();

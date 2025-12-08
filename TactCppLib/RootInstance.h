@@ -25,6 +25,7 @@ public:
     };
 
     explicit RootInstance(const std::string& path, const Settings& settings);
+    ~RootInstance();
 
     std::vector<RootEntry>    GetEntriesByFDID(uint32_t fileDataID) const;
     std::vector<RootEntry>    GetEntriesByLookup(uint64_t lookup) const;
