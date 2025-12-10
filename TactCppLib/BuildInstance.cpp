@@ -231,7 +231,7 @@ std::vector<uint8_t> BuildInstance::OpenFileByFDID(uint32_t fileDataID) {
 
     auto entries = root_->GetEntriesByFDID(fileDataID);
     if (entries.empty())
-        throw std::runtime_error("File not found in root");
+        throw std::runtime_error("File "+std::to_string(fileDataID) + " not found in root");
 
     return OpenFileByCKey(arr16ToVec(entries[0].md5));
 }
