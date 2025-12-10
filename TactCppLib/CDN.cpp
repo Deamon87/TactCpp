@@ -14,26 +14,32 @@
 
 using namespace TACTLibUtils;
 
-inline std::vector<uint8_t> readFile(const std::string& path) {
+bool readRawFile(const std::string& path, std::vector<uint8_t>& buffer) {
+    // Check if file exists on disk
+    if (!std::filesystem::exists(path)) {
+        return false;
+    }
+
     // Open the file in binary mode, and position the read pointer at the end
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file) {
-        throw std::runtime_error("Unable to open file: " + path);
+        std::cout << "Unable to open file: " + path << std::endl << std::flush;
+        return false;
     }
 
     // Get size and allocate vector
     std::streamsize size = file.tellg();
-    std::vector<uint8_t> buffer(size);
+    buffer.resize(size);
 
     // Seek back to beginning and read all bytes
     file.seekg(0, std::ios::beg);
-    if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) {
-        throw std::runtime_error("Error reading file: " + path);
+    if (!file.read((char*)(buffer.data()), size)) {
+        return false;
     }
 
     file.close();
 
-    return buffer;
+    return true;
 }
 
 
@@ -230,29 +236,25 @@ std::vector<uint8_t> CDN::DownloadFile(
     if (hasLocal_) {
         try {
             std::vector<uint8_t> data;
+
+            // Determine the path based on type and key
+            std::filesystem::path p;
+
             if (archive.empty()) {
                 // Original local resolution logic for data/config
                 if (type == "data" && key.rfind(".index") == key.size() - 6) {
-                    std::filesystem::path p = std::filesystem::path(settings_.BaseDir.value_or("")) / "Data" / "indices" / key;
-                    if (settings_.BaseDir.has_value() && std::filesystem::exists(p)) {
-                        return readFile(p.string());
-                    }
+                    p = std::filesystem::path(settings_.BaseDir.value_or("")) / "Data" / "indices" / key;
                 } else if (type == "config" && key.size() >= 4) {
-                    std::filesystem::path p =
-                        std::filesystem::path(settings_.BaseDir.value_or("")) / "Data" / "config" /
-                            key.substr(0,2) / key.substr(2,2) / key;
+                    p = std::filesystem::path(settings_.BaseDir.value_or("")) / "Data" / "config" /
+                        key.substr(0,2) / key.substr(2,2) / key;
+                }
+            }
 
-                    if (settings_.BaseDir.has_value() && std::filesystem::exists(p)) {
-                        return readFile(p.string());
-                    }
-                } else if (TryGetLocalFile(key, data)) {
-                    return data;
-                }
-            } else {
-                // Archive-based local lookup
-                if (TryGetLocalFile(key, data)) {
-                    return data;
-                }
+            // Check if the path is valid and exists
+            if (!p.empty() && settings_.BaseDir.has_value() && readRawFile(p.string(), data)) {
+                return data;
+            } else if (TryGetLocalFile(key, data)) {
+                return data;
             }
         } catch (const std::exception& e) {
             std::cerr << "Failed to read local file: " << e.what() << std::endl;
@@ -276,6 +278,9 @@ std::vector<uint8_t> CDN::DownloadFile(
     if (std::filesystem::exists(cachePath)) {
         auto size = std::filesystem::file_size(cachePath);
         bool valid = (expectedSize == 0 || size == expectedSize);
+
+//        std::cout << "key = " << key << " cache filesize = " << size << " expectedSize = " << expectedSize << std::endl;
+
         if (valid) {
             std::scoped_lock<std::mutex> lock(fileLocks_[cachePath.string()]);
             std::vector<uint8_t> buf(size);
@@ -312,7 +317,7 @@ std::vector<uint8_t> CDN::DownloadFile(
             std::string rangeHeader = std::to_string(offset) + "-" + std::to_string(offset + expectedSize - 1);
             session.SetHeader({{"Range", "bytes=" + rangeHeader}});
         }
-        auto fileSize = session.GetDownloadFileLength();
+        auto fileSize = expectedSize;//session.GetDownloadFileLength();
 
         size_t readOfs = 0;
         std::vector<uint8_t> resultFile(fileSize > 0 ? fileSize : 0);
@@ -332,7 +337,8 @@ std::vector<uint8_t> CDN::DownloadFile(
             std::scoped_lock lock(fileLocks_[cachePath.string()]);
             std::filesystem::create_directories(cacheDir);
             std::ofstream out(cachePath, std::ios::binary);
-            out.write(reinterpret_cast<const char*>(resultFile.data()), resultFile.size());
+            out.write((const char*)(resultFile.data()), resultFile.size());
+            out.close();
 
             return std::move(resultFile);
         }
@@ -366,7 +372,7 @@ bool CDN::TryGetLocalFile(const std::string &eKey, std::vector<uint8_t> &outData
     if (it == cascIndices_.end()) return false;
 
     auto info = it->second->GetIndexInfo(bytes);
-    if (info.archiveOffset == (size_t) -1) return false;
+    if (info.archiveOffset == -1) return false;
 
     std::filesystem::path archivePath =
         settings_.BaseDir.value() / ("Data/data/data." + PadLeft(std::to_string(info.archiveIndex), 3, '0'));

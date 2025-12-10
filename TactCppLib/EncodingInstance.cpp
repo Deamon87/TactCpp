@@ -229,7 +229,7 @@ TableSchema::ResolvePage(const uint8_t* fileData, size_t fileSize,
     if (pageOff + pageSize > fileSize)
         return { 0, 0 };
 
-//    if (std::memcmp(fileData + header.start + pageOff, xKey, keyLen) != 0) {
+//    if (std::memcmp(*it, xKey, keyLen) != 0) {
 //        return { 0, 0 };
 //    }
 
