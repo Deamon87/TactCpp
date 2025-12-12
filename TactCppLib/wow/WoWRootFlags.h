@@ -40,8 +40,8 @@ namespace RootWoW {
 
     enum class ContentFlags : uint32_t {
         None             = 0,
-        F00000001        = 0x1,
-        F00000002        = 0x2,
+        HighResTexture   = 0x1,
+        Install          = 0x2,
         F00000004        = 0x4,
         LoadOnWindows    = 0x8,
         LoadOnMacOS      = 0x10,

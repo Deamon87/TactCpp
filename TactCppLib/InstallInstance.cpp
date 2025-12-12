@@ -84,6 +84,7 @@ InstallInstance::InstallInstance(const std::string& path)
         }
 
         Entries_.push_back({ name, std::move(contentHash), sz, std::move(entryTags) });
+        EntriesByName.insert({name, Entries_.size()});
     }
 }
 
@@ -97,4 +98,13 @@ const std::vector<InstallTagEntry>& InstallInstance::getTags() const {
 
 const std::vector<InstallFileEntry>& InstallInstance::getEntries() const {
     return Entries_;
+}
+const bool InstallInstance::getCKeyByName(const std::string& fileName, std::vector<uint8_t>& cKeyTarget) const {
+    auto itFile = EntriesByName.find("file-index");
+    if (itFile == EntriesByName.end())
+        return false;
+
+    auto & fileEntry = Entries_[itFile->second];
+
+    cKeyTarget = fileEntry.md5;
 }

@@ -31,6 +31,8 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings) : 
     std::ifstream f(path, std::ios::binary);
     if (!f) throw std::runtime_error("Cannot open " + path);
 
+    const bool fullMode = (settings.RootMode == RootWoW::LoadMode::Full);
+
     auto fileSize = std::filesystem::file_size(path);
     m_data.resize(fileSize);
 
@@ -44,9 +46,12 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings) : 
     bool     newRoot   = false;
     uint32_t dfVersion = 0;
 
+    int totalFiles = 0;
+    int namedFiles = 0;
+
     if (header == 1296454484u) {
-        uint32_t totalFiles = dr.ReadInt32LE();
-        uint32_t namedFiles = dr.ReadInt32LE();
+        totalFiles = dr.ReadInt32LE();
+        namedFiles = dr.ReadInt32LE();
 
         if (namedFiles == 1 || namedFiles == 2) {
             uint32_t dfHeaderSize = totalFiles;
@@ -58,11 +63,19 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings) : 
             dr.SetOffset(12);
         }
 
-        entriesFDID.reserve(totalFiles);
+        if (fullMode) {
+            entriesFDIDFull.reserve(totalFiles);
+        } else {
+            entriesFDID.reserve(totalFiles);
+        }
+
+        if (namedFiles) {
+            entriesLookup.reserve(namedFiles);
+        }
+
         newRoot = true;
     }
 
-    const bool fullMode = (settings.RootMode == RootWoW::LoadMode::Full);
     const size_t rootLen = m_data.size();
 
     // 4) Read each chunk/block
@@ -90,23 +103,24 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings) : 
         if (fullMode) skipChunk = false;
 
         bool separateLookup = newRoot;
-        bool doLookup       = !newRoot ||
+        bool doLookup       = !newRoot || (totalFiles > 0 && totalFiles == namedFiles) ||
                               ((uint32_t(contentFlags) & uint32_t(RootWoW::ContentFlags::NoNames)) == 0);
 
         // strides
         const int sizeFdid    = 4;
         const int sizeCHash   = 16;
         const int sizeLookup  = 8;
-        const int strideFdid  = sizeFdid;
-        const int strideCHash = separateLookup ? sizeCHash : (sizeCHash + sizeLookup);
-        const int strideLookup= separateLookup ? sizeLookup : (sizeCHash  + sizeLookup);
 
-        // compute offsets within this block
         size_t blockStart = dr.GetOffset();
-        size_t offFdid    = blockStart;
-        size_t offCHash   = offFdid  + count * sizeFdid;
-        size_t offLookup  = offCHash + (separateLookup ? count * sizeCHash : sizeCHash);
         size_t blockSize  = count * (sizeFdid + sizeCHash + (doLookup ? sizeLookup : 0));
+
+        auto fileDataDeltas = dr.sliceAndAdvance(sizeFdid * count);
+        auto cKeys = dr.sliceAndAdvance(sizeCHash * count);
+
+        auto nameLookups = doLookup ? dr.sliceAndAdvance(sizeLookup * count) : DataReader(nullptr,0,0);
+
+        dr.SetOffset(dr.GetOffset() - (sizeCHash * count + (doLookup ? sizeLookup : 0) * count));
+        auto combinedKeys = dr.sliceAndAdvance(sizeCHash * count + (doLookup ? sizeLookup : 0) * count);
 
         if (!skipChunk) {
             uint32_t fileIndex = 0;
@@ -117,33 +131,37 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings) : 
                 entry.localeFlags  = localeFlags;
 
                 // — read file-data ID delta
-                dr.SetOffset(offFdid + i * strideFdid);
-                uint32_t offs = dr.ReadInt32LE();
-                uint32_t fid  = fileIndex + offs;
+                uint32_t fid  = fileIndex + fileDataDeltas.ReadInt32LE();
                 entry.fileDataID = fid;
-                fileIndex       = fid + 1;
+                fileIndex        = fid + 1;
 
-                // — read 16-byte MD5
-                dr.SetOffset(offCHash + i * strideCHash);
-                for (int k = 0; k < 16; ++k)
-                    entry.md5[k] = dr.ReadUInt8();
+                if (separateLookup) {
+                    for (int k = 0; k < 16; ++k)
+                        entry.md5[k] = cKeys.ReadUInt8();
 
-                // — optional 64-bit lookup
-                if (doLookup) {
-                    dr.SetOffset(offLookup + i * strideLookup);
-                    entry.lookup = dr.ReadUInt64LE();
-                    entriesLookup.emplace(entry.lookup, entry.fileDataID);
+                    // — optional 64-bit lookup
+                    if (doLookup) {
+                        entry.lookup = nameLookups.ReadUInt64LE();
+                        entriesLookup.emplace(entry.lookup, entry.fileDataID);
+                    }
+                } else {
+                   for (int k = 0; k < 16; ++k)
+                        entry.md5[k] = combinedKeys.ReadUInt8();
+
+                    // — optional 64-bit lookup
+                    if (doLookup) {
+                        entry.lookup = combinedKeys.ReadUInt64LE();
+                        entriesLookup.emplace(entry.lookup, entry.fileDataID);
+                    }
                 }
 
                 if (fullMode)
                     entriesFDIDFull[entry.fileDataID].push_back(entry);
-                else
+                else {
                     entriesFDID.emplace(entry.fileDataID, entry);
+                }
             }
         }
-
-        // advance past the entire block
-        dr.SetOffset(blockStart + blockSize);
     }
 }
 
@@ -165,7 +183,8 @@ vector<RootInstance::RootEntry> RootInstance::GetEntriesByFDID(uint32_t id) cons
 
 vector<RootInstance::RootEntry> RootInstance::GetEntriesByLookup(uint64_t lk) const {
     auto it = entriesLookup.find(lk);
-    if (it != entriesLookup.end()) return GetEntriesByFDID(it->second);
+    if (it != entriesLookup.end()) return
+        GetEntriesByFDID(it->second);
     return {};
 }
 

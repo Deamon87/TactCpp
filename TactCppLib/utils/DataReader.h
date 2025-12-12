@@ -34,6 +34,15 @@ public:
         m_offset = offset;
     }
 
+    inline DataReader sliceAndAdvance(std::size_t size) {
+        assert(m_offset + size <= m_availableSize);
+
+        DataReader child(m_ptr+m_offset, size);
+        m_offset+=size;
+
+        return child;
+    }
+
     inline int8_t ReadInt8()
     {
         constexpr auto ReadSize = 1u;

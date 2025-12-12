@@ -72,6 +72,8 @@ public:
     // lookup cKey -> (count, encKeys, decodedSize)
     EncodingResult FindContentKey(const std::vector<uint8_t>& cKeyTarget) const;
     EncodingResult FindContentKey(const std::array<uint8_t, 16>& cKeyTarget) const;
+    EncodingResult FindContentKey(const uint8_t *ptr, int keyLength) const;
+
 
     // lookup eKey -> (eSpec string, encodedFileSize)
     std::pair<std::string, uint64_t>
@@ -79,7 +81,6 @@ public:
 
 private:
     void ReadHeader(uint8_t& version, EncodingSchema& schema);
-    EncodingResult FindContentKey(const uint8_t *ptr, int keyLength) const;
 
     std::string           _filePath;
     size_t                _fileSize;

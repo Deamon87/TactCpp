@@ -23,6 +23,7 @@ public:
     ~BuildInstance();
 
     // file‐opening helpers
+    std::vector<uint8_t> OpenFileByName(const std::string &fileName);
     std::vector<uint8_t> OpenFileByFDID(uint32_t fileDataID);
     std::vector<uint8_t> OpenFileByCKey(const std::string& cKey);
     std::vector<uint8_t> OpenFileByCKey(const std::vector<uint8_t>& cKey);

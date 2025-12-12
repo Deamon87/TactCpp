@@ -58,13 +58,15 @@ void EncodingInstance::ReadHeader(uint8_t& version, EncodingSchema& schema) {
     int32_t ePgCnt  = reader.ReadInt32BE();          // h[13–16]
 
     // Skip the one reserved byte at h[17]
-    reader.ReadUInt8();
+    auto reserved = reader.ReadUInt8();
+    assert(reserved == 0);
 
     // Read the size of the spec section (h[18–21])
     int32_t eSpecSz = reader.ReadInt32BE();
 
     // --- compute ranges ---
     std::size_t off = reader.GetOffset();  // should be 22 now
+    assert(off == 22);
 
     Range rSpec{ off, off + std::size_t(eSpecSz) };
 
@@ -219,19 +221,20 @@ TableSchema::ResolvePage(const uint8_t* fileData, size_t fileSize,
             return std::memcmp(rec, needle, keyLen) < 0;
         }
     );
-    // If at the beginning, no lower entry
-    if (it == endIt)
-        return { 0, 0 };
 
-    size_t index = std::distance(beginIt, --it);
+    int index = std::distance(beginIt, it) - 1;
+    index = std::max(index, 0);
+
+//    assert(std::memcmp(&fileData[header.start + index * headerEntrySize], xKey, keyLen) <= 0);
+//    if (std::memcmp(*it, xKey, keyLen) > 0) {
+//        return { 0, 0 };
+//    }
+
+
     size_t pageOff = pages.start + index * pageSize;
 
     if (pageOff + pageSize > fileSize)
         return { 0, 0 };
-
-//    if (std::memcmp(*it, xKey, keyLen) != 0) {
-//        return { 0, 0 };
-//    }
 
     return { pageOff, pageSize };
 }

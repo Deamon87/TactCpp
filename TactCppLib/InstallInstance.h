@@ -6,6 +6,7 @@
 #define INSTALLINSTANCE_H
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <cstdint>
 #include <memory>
@@ -31,6 +32,7 @@ public:
 
     const std::vector<InstallTagEntry>&   getTags()    const;
     const std::vector<InstallFileEntry>&  getEntries() const;
+    const bool getCKeyByName(const std::string& fileName, std::vector<uint8_t>& cKeyTarget) const;
 
 private:
     std::shared_ptr<MemoryMappedFile>       mmf_;
@@ -39,6 +41,7 @@ private:
     uint32_t                                NumEntries_;
     std::vector<InstallTagEntry>            Tags_;
     std::vector<InstallFileEntry>           Entries_;
+    std::unordered_map<std::string, uint32_t>           EntriesByName;
 };
 
 #endif //INSTALLINSTANCE_H

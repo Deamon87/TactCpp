@@ -169,7 +169,7 @@ bool BLTE::TryDecrypt(const uint8_t* data, size_t dataSize,
 
     // 4) ivSize
     uint8_t ivSize = dr.ReadUInt8();
-    if (ivSize != 4 || ivSize > 0x10)
+    if ((ivSize != 4 && ivSize != 8) || ivSize > 0x10)
         throw std::runtime_error("IVSize invalid");
 
     // 5) IV bytes

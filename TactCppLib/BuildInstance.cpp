@@ -13,6 +13,7 @@
 #include "utils/stringUtils.h"
 #include "BuildInfo.h"
 #include "utils/TactConfigParser.h"
+#include "utils/Jenkins96.h"
 
 namespace fs = std::filesystem;
 using namespace TACTLibUtils;
@@ -234,6 +235,32 @@ std::vector<uint8_t> BuildInstance::OpenFileByFDID(uint32_t fileDataID) {
         throw std::runtime_error("File "+std::to_string(fileDataID) + " not found in root");
 
     return OpenFileByCKey(arr16ToVec(entries[0].md5));
+}
+
+std::vector<uint8_t> BuildInstance::OpenFileByName(const std::string &fileName) {
+    // Normalize path separators
+    std::string normName = fileName;
+    std::replace(normName.begin(), normName.end(), '/', '\\');
+
+    if (!root_)
+        throw std::runtime_error("Root not loaded");
+
+    std::vector<uint8_t> ckey;
+
+    // Check for install_ and get CKey by name first (priority)
+    bool foundCKeyInInstall = install_ && install_->getCKeyByName(fileName, ckey);
+    if (!foundCKeyInInstall) {
+        uint64_t hash = Jenkins96::ComputeHash(normName, true);
+
+        auto entries = root_->GetEntriesByLookup(hash);
+        if (entries.empty())
+            throw std::runtime_error("File \"" + fileName + "\" with lookup " + std::to_string(hash) +
+                                     " not found in root");
+
+        ckey = std::vector<uint8_t>(entries[0].md5.begin(), entries[0].md5.end());
+    }
+
+    return OpenFileByCKey(ckey);
 }
 
 std::vector<uint8_t> BuildInstance::OpenFileByCKey(const std::string &cKey) {
