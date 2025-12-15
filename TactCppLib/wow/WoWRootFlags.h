@@ -14,7 +14,6 @@ namespace RootWoW {
     };
 
     enum class LocaleFlags : uint32_t {
-        All       = 0xFFFFFFFF,
         None      = 0,
         Unk_1     = 0x1,
         enUS      = 0x2,
@@ -54,6 +53,20 @@ namespace RootWoW {
         Bundle           = 0x40000000,
         NoCompression    = 0x80000000
     };
+
+    constexpr bool has_all(LocaleFlags value, LocaleFlags mask) noexcept {
+        return (uint32_t(value) & uint32_t(mask)) == uint32_t(mask);
+    }
+    constexpr bool has_any(LocaleFlags value, LocaleFlags mask) noexcept {
+        return (uint32_t(value) & uint32_t(mask)) != 0;
+    }
+
+    constexpr bool has_all(ContentFlags value, ContentFlags mask) noexcept {
+        return (uint32_t(value) & uint32_t(mask)) == uint32_t(mask);
+    }
+    constexpr bool has_any(ContentFlags value, ContentFlags mask) noexcept {
+        return (uint32_t(value) & uint32_t(mask)) != 0;
+    }
 }
 
 #endif //WOWROOTFLAGS_H

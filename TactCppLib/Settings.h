@@ -22,6 +22,9 @@ struct Settings {
     std::string BuildConfig;
     std::string CDNConfig;
 
+    bool preferLowViolence = false;
+    bool preferHiResTextures = false;
+
     std::filesystem::path CacheDir = "cache";
     bool        ListfileFallback = true;
     std::string ListfileURL   = "https://github.com/wowdev/wow-listfile/releases/latest/download/community-listfile.csv";

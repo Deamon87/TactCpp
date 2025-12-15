@@ -96,15 +96,19 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings) : 
             localeFlags  = static_cast<RootWoW::LocaleFlags>(dr.ReadInt32LE());
         }
 
-        bool localeSkip = !((uint32_t(localeFlags)  & uint32_t(RootWoW::LocaleFlags::All_WoW)) ||
-                             (uint32_t(localeFlags) & uint32_t(settings.Locale)));
-        bool contentSkip = (uint32_t(contentFlags) & uint32_t(RootWoW::ContentFlags::LowViolence)) != 0;
+        bool localeSkip =
+            !has_all(localeFlags, RootWoW::LocaleFlags::All_WoW) && !has_any(localeFlags, settings.Locale);
+
+        bool contentSkip =
+            (settings.preferLowViolence   && !has_any(contentFlags, RootWoW::ContentFlags::LowViolence)) ||
+            (settings.preferHiResTextures && !has_any(contentFlags, RootWoW::ContentFlags::HighResTexture));
+
         bool skipChunk   = localeSkip || contentSkip;
         if (fullMode) skipChunk = false;
 
         bool separateLookup = newRoot;
         bool doLookup       = !newRoot || (totalFiles > 0 && totalFiles == namedFiles) ||
-                              ((uint32_t(contentFlags) & uint32_t(RootWoW::ContentFlags::NoNames)) == 0);
+                              !has_any(contentFlags, RootWoW::ContentFlags::NoNames);
 
         // strides
         const int sizeFdid    = 4;
@@ -114,13 +118,17 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings) : 
         size_t blockStart = dr.GetOffset();
         size_t blockSize  = count * (sizeFdid + sizeCHash + (doLookup ? sizeLookup : 0));
 
+        auto drCopy = dr;
+        auto combinedKeys = drCopy.sliceAndAdvance(sizeCHash * count + (doLookup ? sizeLookup : 0) * count);
+
         auto fileDataDeltas = dr.sliceAndAdvance(sizeFdid * count);
         auto cKeys = dr.sliceAndAdvance(sizeCHash * count);
-
         auto nameLookups = doLookup ? dr.sliceAndAdvance(sizeLookup * count) : DataReader(nullptr,0,0);
 
-        dr.SetOffset(dr.GetOffset() - (sizeCHash * count + (doLookup ? sizeLookup : 0) * count));
-        auto combinedKeys = dr.sliceAndAdvance(sizeCHash * count + (doLookup ? sizeLookup : 0) * count);
+        if (!separateLookup) {
+            cKeys = combinedKeys;
+            nameLookups = combinedKeys;
+        }
 
         if (!skipChunk) {
             uint32_t fileIndex = 0;
@@ -135,24 +143,13 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings) : 
                 entry.fileDataID = fid;
                 fileIndex        = fid + 1;
 
-                if (separateLookup) {
-                    for (int k = 0; k < 16; ++k)
-                        entry.md5[k] = cKeys.ReadUInt8();
+                for (int k = 0; k < 16; ++k)
+                    entry.md5[k] = cKeys.ReadUInt8();
 
-                    // — optional 64-bit lookup
-                    if (doLookup) {
-                        entry.lookup = nameLookups.ReadUInt64LE();
-                        entriesLookup.emplace(entry.lookup, entry.fileDataID);
-                    }
-                } else {
-                   for (int k = 0; k < 16; ++k)
-                        entry.md5[k] = combinedKeys.ReadUInt8();
-
-                    // — optional 64-bit lookup
-                    if (doLookup) {
-                        entry.lookup = combinedKeys.ReadUInt64LE();
-                        entriesLookup.emplace(entry.lookup, entry.fileDataID);
-                    }
+                // — optional 64-bit lookup
+                if (doLookup) {
+                    entry.lookup = nameLookups.ReadUInt64LE();
+                    entriesLookup.emplace(entry.lookup, entry.fileDataID);
                 }
 
                 if (fullMode)

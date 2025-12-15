@@ -198,7 +198,6 @@ void CDN::LoadCDNs() {
             SetCDNs(servers);
         }
     }
-    cdnServers_.push_back("archive.wow.tools");
 
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start).count();

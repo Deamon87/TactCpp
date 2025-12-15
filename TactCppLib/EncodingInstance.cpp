@@ -222,14 +222,12 @@ TableSchema::ResolvePage(const uint8_t* fileData, size_t fileSize,
         }
     );
 
+    if (it == beginIt)
+        return {0,0}; // Not found
+
     int index = std::distance(beginIt, it) - 1;
-    index = std::max(index, 0);
 
 //    assert(std::memcmp(&fileData[header.start + index * headerEntrySize], xKey, keyLen) <= 0);
-//    if (std::memcmp(*it, xKey, keyLen) > 0) {
-//        return { 0, 0 };
-//    }
-
 
     size_t pageOff = pages.start + index * pageSize;
 
