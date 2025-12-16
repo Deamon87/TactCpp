@@ -72,6 +72,8 @@ add_library(TactCppLib STATIC
         TactCppLib/Settings.h
         TactCppLib/RootInstance.cpp
         TactCppLib/RootInstance.h
+        TactCppLib/ListFile.cpp
+        TactCppLib/ListFile.h
 		TactCppLib/MemoryMappedFile.cpp
 		TactCppLib/MemoryMappedFile.h
 		TactCppLib/utils/BinaryUtils.h

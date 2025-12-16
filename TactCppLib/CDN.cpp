@@ -291,6 +291,10 @@ std::vector<uint8_t> CDN::DownloadFile(
         }
     }
 
+    if (!settings_.allowOnlineDownload) {
+         throw std::runtime_error("Failed to load " + key + " file from local ");
+    }
+
     // 5) Download from CDN(s)
     for (const auto& server : cdnServers_) {
         // URL segments

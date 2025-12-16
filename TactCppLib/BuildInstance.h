@@ -16,6 +16,7 @@
 #include "IndexInstance.h"
 #include "CDN.h"
 #include "Settings.h"
+#include "ListFile.h"
 
 class BuildInstance {
 public:
@@ -41,6 +42,7 @@ public:
     const std::unique_ptr<IndexInstance>      &GetGroupIndex()  const { return groupIndex_;  }
     const std::unique_ptr<IndexInstance>      &GetFileIndex()   const { return fileIndex_;   }
     const std::unique_ptr<CDN>                &GetCDN()         const { return cdn_;         }
+    const std::unique_ptr<ListFile>           &GetListFile()    const { return listFile_;   }
 
     // populate indexes, encoding, root & install instances
     void Load();
@@ -55,6 +57,7 @@ private:
     std::unique_ptr<IndexInstance>    groupIndex_= nullptr;
     std::unique_ptr<IndexInstance>    fileIndex_= nullptr;
     std::unique_ptr<CDN>              cdn_= nullptr;
+    std::unique_ptr<ListFile>         listFile_= nullptr;
 
     // load the build+CDN configs (path or 32-char hex ID)
     void LoadConfigs();

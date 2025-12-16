@@ -4,10 +4,140 @@
 #include <stdexcept>
 #include <algorithm>
 #include <iostream>
+#include <sstream>
+#include <iomanip>
+#include <memory>
 
 #include "utils/DataReader.h"
+#include "wow/WoWRootFlags.h"
+#include "ListFile.h"
 
 using namespace std;
+
+//#define DUMP_ROOT
+#ifdef DUMP_ROOT
+class RootDumper {
+private:
+    std::ofstream m_file;
+    uint32_t m_chunkIndex;
+    const std::unique_ptr<ListFile> &m_listFile;
+    
+    static std::string ParseContentFlags(RootWoW::ContentFlags flags) {
+        std::ostringstream oss;
+        uint32_t value = static_cast<uint32_t>(flags);
+        
+        if (value == 0) {
+            oss << "None";
+            return oss.str();
+        }
+        
+        bool first = true;
+        if (value & 0x1) { if (!first) oss << " | "; oss << "HighResTexture"; first = false; }
+        if (value & 0x2) { if (!first) oss << " | "; oss << "Install"; first = false; }
+        if (value & 0x4) { if (!first) oss << " | "; oss << "F00000004"; first = false; }
+        if (value & 0x8) { if (!first) oss << " | "; oss << "LoadOnWindows"; first = false; }
+        if (value & 0x10) { if (!first) oss << " | "; oss << "LoadOnMacOS"; first = false; }
+        if (value & 0x80) { if (!first) oss << " | "; oss << "LowViolence"; first = false; }
+        if (value & 0x100) { if (!first) oss << " | "; oss << "DoNotLoad"; first = false; }
+        if (value & 0x800) { if (!first) oss << " | "; oss << "UpdatePlugin"; first = false; }
+        if (value & 0x8000000) { if (!first) oss << " | "; oss << "Encrypted"; first = false; }
+        if (value & 0x10000000) { if (!first) oss << " | "; oss << "NoNames"; first = false; }
+        if (value & 0x20000000) { if (!first) oss << " | "; oss << "UncommonRes"; first = false; }
+        if (value & 0x40000000) { if (!first) oss << " | "; oss << "Bundle"; first = false; }
+        if (value & 0x80000000) { if (!first) oss << " | "; oss << "NoCompression"; first = false; }
+        
+        // Handle unknown bits
+        uint32_t knownBits = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x80 | 0x100 | 0x800 | 0x8000000 | 0x10000000 | 0x20000000 | 0x40000000 | 0x80000000;
+        uint32_t unknownBits = value & ~knownBits;
+        if (unknownBits != 0) {
+            if (!first) oss << " | ";
+            oss << "Unknown(0x" << std::hex << unknownBits << std::dec << ")";
+        }
+        
+        return oss.str();
+    }
+    
+    static std::string ParseLocaleFlags(RootWoW::LocaleFlags flags) {
+        std::ostringstream oss;
+        uint32_t value = static_cast<uint32_t>(flags);
+        
+        if (value == 0) {
+            oss << "None";
+            return oss.str();
+        }
+        
+        bool first = true;
+        if (value & 0x1) { if (!first) oss << " | "; oss << "Unk_1"; first = false; }
+        if (value & 0x2) { if (!first) oss << " | "; oss << "enUS"; first = false; }
+        if (value & 0x4) { if (!first) oss << " | "; oss << "koKR"; first = false; }
+        if (value & 0x8) { if (!first) oss << " | "; oss << "Unk_8"; first = false; }
+        if (value & 0x10) { if (!first) oss << " | "; oss << "frFR"; first = false; }
+        if (value & 0x20) { if (!first) oss << " | "; oss << "deDE"; first = false; }
+        if (value & 0x40) { if (!first) oss << " | "; oss << "zhCN"; first = false; }
+        if (value & 0x80) { if (!first) oss << " | "; oss << "esES"; first = false; }
+        if (value & 0x100) { if (!first) oss << " | "; oss << "zhTW"; first = false; }
+        if (value & 0x200) { if (!first) oss << " | "; oss << "enGB"; first = false; }
+        if (value & 0x400) { if (!first) oss << " | "; oss << "enCN"; first = false; }
+        if (value & 0x800) { if (!first) oss << " | "; oss << "enTW"; first = false; }
+        if (value & 0x1000) { if (!first) oss << " | "; oss << "esMX"; first = false; }
+        if (value & 0x2000) { if (!first) oss << " | "; oss << "ruRU"; first = false; }
+        if (value & 0x4000) { if (!first) oss << " | "; oss << "ptBR"; first = false; }
+        if (value & 0x8000) { if (!first) oss << " | "; oss << "itIT"; first = false; }
+        if (value & 0x10000) { if (!first) oss << " | "; oss << "ptPT"; first = false; }
+        if (value & 0x20000000) { if (!first) oss << " | "; oss << "enSG"; first = false; }
+        if (value & 0x40000000) { if (!first) oss << " | "; oss << "plPL"; first = false; }
+        
+        // Handle unknown bits
+        uint32_t knownBits = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x20 | 0x40 | 0x80 | 0x100 | 0x200 | 0x400 | 0x800 | 0x1000 | 0x2000 | 0x4000 | 0x8000 | 0x10000 | 0x20000000 | 0x40000000;
+        uint32_t unknownBits = value & ~knownBits;
+        if (unknownBits != 0) {
+            if (!first) oss << " | ";
+            oss << "Unknown(0x" << std::hex << unknownBits << std::dec << ")";
+        }
+        
+        return oss.str();
+    }
+    
+public:
+    explicit RootDumper(const std::string& filePath, const std::unique_ptr<ListFile> &listFile)
+        : m_chunkIndex(0), m_listFile(listFile) {
+        m_file.open(filePath, std::ios::out | std::ios::trunc);
+        if (!m_file.is_open()) {
+            throw std::runtime_error("Cannot open dump file: " + filePath);
+        }
+    }
+    
+    ~RootDumper() {
+        if (m_file.is_open()) {
+            m_file.close();
+        }
+    }
+    
+    void StartChunk(RootWoW::ContentFlags contentFlags, RootWoW::LocaleFlags localeFlags) {
+        m_file << std::endl;
+        m_file << "=== Chunk " << m_chunkIndex << " ===" << std::endl;
+        m_file << "ContentFlags: 0x" << std::hex << std::setw(8) << std::setfill('0')
+               << static_cast<uint32_t>(contentFlags) << std::dec 
+               << " (" << ParseContentFlags(contentFlags) << ")" << std::endl;
+        m_file << "LocaleFlags: 0x" << std::hex << std::setw(8) << std::setfill('0') 
+               << static_cast<uint32_t>(localeFlags) << std::dec 
+               << " (" << ParseLocaleFlags(localeFlags) << ")" << std::endl;
+        m_file << std::endl;
+        m_chunkIndex++;
+    }
+    
+    void LogEntry(uint32_t fdid) {
+        m_file << "  FDID: " << fdid;
+        if (m_listFile && m_listFile->IsLoaded()) {
+            std::string filename = m_listFile->GetFilename(fdid);
+            if (!filename.empty()) {
+                m_file << " (" << filename << ")";
+            }
+        }
+        m_file << std::endl;
+    }
+};
+#endif // DUMP_ROOT
 
 const std::unordered_map<std::string, RootWoW::LocaleFlags> RootInstance::StringToLocaleFlag = {
     {"dede", RootWoW::LocaleFlags::deDE},
@@ -27,7 +157,11 @@ const std::unordered_map<std::string, RootWoW::LocaleFlags> RootInstance::String
 };
 
 // Constructor: load & parse the "root" file
-RootInstance::RootInstance(const std::string& path, const Settings& settings) : m_loadedWith(settings.RootMode) {
+RootInstance::RootInstance(const std::string& path, const Settings& settings, const std::unique_ptr<ListFile> &listFile) : m_loadedWith(settings.RootMode) {
+#ifdef DUMP_ROOT
+    RootDumper dumper(path + ".txt", listFile);
+#endif // DUMP_ROOT
+    
     std::ifstream f(path, std::ios::binary);
     if (!f) throw std::runtime_error("Cannot open " + path);
 
@@ -100,11 +234,17 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings) : 
             !has_all(localeFlags, RootWoW::LocaleFlags::All_WoW) && !has_any(localeFlags, settings.Locale);
 
         bool contentSkip =
-            (settings.preferLowViolence   && !has_any(contentFlags, RootWoW::ContentFlags::LowViolence)) ||
-            (settings.preferHiResTextures && !has_any(contentFlags, RootWoW::ContentFlags::HighResTexture));
+            (!settings.preferLowViolence   && has_any(contentFlags, RootWoW::ContentFlags::LowViolence)) ||
+            (!settings.preferHiResTextures && has_any(contentFlags, RootWoW::ContentFlags::HighResTexture));
 
         bool skipChunk   = localeSkip || contentSkip;
         if (fullMode) skipChunk = false;
+
+#ifdef DUMP_ROOT
+        skipChunk = false;
+        dumper.StartChunk(contentFlags, localeFlags);
+#endif // DUMP_ROOT
+
 
         bool separateLookup = newRoot;
         bool doLookup       = !newRoot || (totalFiles > 0 && totalFiles == namedFiles) ||
@@ -152,10 +292,15 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings) : 
                     entriesLookup.emplace(entry.lookup, entry.fileDataID);
                 }
 
+#ifdef DUMP_ROOT
+                dumper.LogEntry(entry.fileDataID);
+#endif // DUMP_ROOT
+
                 if (fullMode)
                     entriesFDIDFull[entry.fileDataID].push_back(entry);
                 else {
-                    entriesFDID.emplace(entry.fileDataID, entry);
+                    if (entriesFDID.find(entry.fileDataID) == entriesFDID.end())
+                        entriesFDID.emplace(entry.fileDataID, entry);
                 }
             }
         }

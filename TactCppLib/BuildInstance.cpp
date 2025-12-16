@@ -176,6 +176,11 @@ void BuildInstance::Load() {
         std::cout << "Encoding loaded in " << std::ceil(ms) << "ms\n";
     }
 
+    // --- ListFile ---
+    if (settings_.loadListFile) {
+        listFile_ = std::make_unique<ListFile>(settings_);
+    }
+
     // --- Root ---
     t0 = std::chrono::steady_clock::now();
     auto itRoot = buildConfig_->Values.find("root");
@@ -190,7 +195,8 @@ void BuildInstance::Load() {
     auto rootHex = bytesToHexLower(rootKeys.key(0));
     root_ = std::make_unique<RootInstance>(
         cdn_->GetDecodedFilePath("data", rootHex, 0, rootKeys.decodedFileSize),
-        settings_
+        settings_,
+        listFile_
     );
     {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
