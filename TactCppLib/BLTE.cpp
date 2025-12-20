@@ -3,17 +3,12 @@
 //
 
 #include "BLTE.h"
-
-// BLTE.cpp
-#include "BLTE.h"
 #include <stdexcept>
 #include <zlib.h>
 #include <cstring>
 
 #include "utils/DataReader.h"
 #include "utils/KeyService.h"
-
-// In BLTE.cpp, using DataReader:
 
 std::vector<uint8_t> BLTE::Decode(const std::vector<uint8_t>& data, uint64_t totalDecompSize) {
     const size_t fixedHeaderSize = 8;
@@ -145,7 +140,7 @@ void BLTE::HandleDataBlock(char mode,
         }
 
         default:
-            throw std::runtime_error(std::string("Invalid BLTE chunk mode: ") + mode);
+            throw std::runtime_error(std::string("Invalid BLTE chunk mode: ") + std::to_string((int)mode));
     }
 }
 

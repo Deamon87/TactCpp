@@ -74,6 +74,10 @@ add_library(TactCppLib STATIC
         TactCppLib/RootInstance.h
         TactCppLib/ListFile.cpp
         TactCppLib/ListFile.h
+        TactCppLib/utils/SalsaDecrypt.h
+        TactCppLib/utils/SalsaDecrypt.cpp
+        TactCppLib/FileCache.h
+        TactCppLib/FileCache.cpp
 		TactCppLib/MemoryMappedFile.cpp
 		TactCppLib/MemoryMappedFile.h
 		TactCppLib/utils/BinaryUtils.h

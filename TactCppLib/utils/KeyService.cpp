@@ -8,11 +8,14 @@
 
 // Static member definitions
 std::unordered_map<uint64_t, std::vector<uint8_t>> KeyService::keys_;
+std::unordered_map<std::string, std::array<uint8_t, 16>> KeyService::armadilloKeys_;
+
 bool KeyService::initialized_ = KeyService::Initialize();
 
 bool KeyService::Initialize() {
     // Perform one-time load of keys
     KeyService::LoadKeys();
+    KeyService::LoadArmadilloKeys();
     return true;
 }
 
@@ -24,8 +27,12 @@ bool KeyService::TryGetKey(uint64_t keyName, std::vector<uint8_t>& outKey) {
     return true;
 }
 
-void KeyService::SetKey(uint64_t keyName, const std::vector<uint8_t>& key) {
-    KeyService::keys_[keyName] = key;
+bool KeyService::TryGetArmadilloKey(const std::string &keyName, std::array<uint8_t, 16>& outKey) {
+    auto it = KeyService::armadilloKeys_.find(keyName);
+    if (it == KeyService::armadilloKeys_.end())
+        return false;
+    outKey = it->second;
+    return true;
 }
 
 void KeyService::LoadKeys() {
@@ -59,3 +66,30 @@ void KeyService::LoadKeys() {
         KeyService::keys_.emplace(lookup, std::move(key));
     }
 }
+
+void KeyService::LoadArmadilloKeys() {
+        try {
+        // Iterate through all entries in the current directory
+        for (const auto& entry : std::filesystem::directory_iterator(".")) {
+            if (entry.is_regular_file() && entry.path().extension() == ".ak") {
+
+                // Open file in binary mode
+                std::ifstream file(entry.path(), std::ios::binary);
+                if (!file) {
+//                    std::cerr << "Failed to open file: " << entry.path() << "\n";
+                    continue;
+                }
+
+                // Read first 16 bytes
+                std::array<uint8_t, 16> key;
+                file.read((char *)(key.data()), 16);
+
+                std::string filename_no_ext = entry.path().stem().string();
+                KeyService::armadilloKeys_.emplace(filename_no_ext, key);
+            }
+        }
+    } catch (const std::filesystem::filesystem_error& ex) {
+//        std::cerr << "Filesystem error: " << ex.what() << "\n";
+    }
+}
+

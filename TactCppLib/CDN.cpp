@@ -1,4 +1,6 @@
 #include "CDN.h"
+#include "utils/KeyService.h"
+#include "utils/SalsaDecrypt.h"
 #include "utils/stringUtils.h"
 #include <filesystem>
 #include <fstream>
@@ -42,11 +44,12 @@ bool readRawFile(const std::string& path, std::vector<uint8_t>& buffer) {
     return true;
 }
 
+CDN::CDN(const Settings &settings) : settings_(settings) {
 
+    auto fileCache  = std::make_unique<FileCache>(settings_.CacheDir);
+    fileCache_ = std::move(fileCache);
 
-
-CDN::CDN(const Settings &settings)
-    : settings_(settings) {
+    armadilloKey_ = settings.ArmadilloKey;
 }
 
 CDN::~CDN() {
@@ -60,7 +63,7 @@ void CDN::OpenLocal() {
     try {
         auto start = std::chrono::steady_clock::now();
         LoadCASCIndices();
-        hasLocal_ = true;
+        hasLocalCasc = true;
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - start).count();
         std::cout << "Loaded local CASC indices in " << elapsed << "ms" << std::endl << std::flush;
@@ -232,7 +235,7 @@ std::vector<uint8_t> CDN::DownloadFile(
     int timeoutMs)
 {
     // 1) Attempt local fetch
-    if (hasLocal_) {
+    if (hasLocalCasc) {
         try {
             std::vector<uint8_t> data;
 
@@ -260,49 +263,53 @@ std::vector<uint8_t> CDN::DownloadFile(
         }
     }
 
-    // 4) Ensure CDN list is loaded (so that the productDirectory is filled)
-    {
-        std::scoped_lock lock(cdnLoadingMutex_);
-        if (cdnServers_.empty())
-            LoadCDNs();
-    }
-
-    // 2) Prepare cache path
-    std::string fileType = archive.empty() ? type : "data";
-    std::filesystem::path cacheDir = std::filesystem::path(settings_.CacheDir) / productDirectory_ / fileType;
-    std::filesystem::path cachePath = cacheDir / key;
-
-
-    // 3) Check cache validity
-    if (std::filesystem::exists(cachePath)) {
-        auto size = std::filesystem::file_size(cachePath);
-        bool valid = (expectedSize == 0 || size == expectedSize);
-
-//        std::cout << "key = " << key << " cache filesize = " << size << " expectedSize = " << expectedSize << std::endl;
-
-        if (valid) {
-            std::scoped_lock<std::mutex> lock(fileLocks_[cachePath.string()]);
-            std::vector<uint8_t> buf(size);
-            std::ifstream in(cachePath, std::ios::binary);
-            in.read(reinterpret_cast<char*>(buf.data()), buf.size());
-            return buf;
-        } else {
-            std::filesystem::remove(cachePath);
-        }
+    // 2) Try to load from cache
+    auto cachedData = fileCache_->TryLoadFromCache(key, type, archive, productDirectory_, expectedSize);
+    if (!cachedData.empty()) {
+        return cachedData;
     }
 
     if (!settings_.allowOnlineDownload) {
          throw std::runtime_error("Failed to load " + key + " file from local ");
     }
 
-    // 5) Download from CDN(s)
+    // 4) Ensure CDN list is loaded (so that the productDirectory is filled)
+    {
+        std::scoped_lock lock(cdnLoadingMutex_);
+        if (cdnServers_.empty() && !settings_.useTactLocal)
+            LoadCDNs();
+    }
+
+    // 5) Get file from CDN(s)
+    auto data = std::vector<uint8_t>();
+    if (settings_.useTactLocal) {
+        data = DownloadFileFromLocal(type, key, archive, offset, expectedSize);
+    }
+    if (data.empty()) {
+        data = DownloadFileFromHTTP(type, key, archive, offset, expectedSize, timeoutMs);
+    }
+
+    return data;
+}
+
+std::vector<uint8_t> CDN::DownloadFileFromHTTP(
+    const std::string& type,
+    const std::string& key,
+    const std::string& archive,
+    int offset,
+    uint64_t expectedSize,
+    int timeoutMs)
+{
+    std::string fileType = archive.empty() ? type : "data";
     for (const auto& server : cdnServers_) {
         // URL segments
         std::string seg1 = archive.empty() ? key.substr(0,2) : archive.substr(0,2);
         std::string seg2 = archive.empty() ? key.substr(2,2) : archive.substr(2,2);
         std::string resource = archive.empty() ? key : archive;
 
-        std::string url = std::format("http://{}/{}/{}/{}/{}/{}", server, productDirectory_, fileType, seg1, seg2, resource);
+        std::string url = fileType == "prodConfig" ?
+            std::format("http://{}/{}/{}/{}/{}", server, "tpr/configs/data", seg1, seg2, resource) :
+            std::format("http://{}/{}/{}/{}/{}/{}", server, productDirectory_, fileType, seg1, seg2, resource);
 
         if (!archive.empty()) {
             std::cout << "Downloading chunk " << key << " from " << url <<
@@ -337,11 +344,12 @@ std::vector<uint8_t> CDN::DownloadFile(
         if (r.status_code == 200 || r.status_code == 206) {
             // Write to cache
 
-            std::scoped_lock lock(fileLocks_[cachePath.string()]);
-            std::filesystem::create_directories(cacheDir);
-            std::ofstream out(cachePath, std::ios::binary);
-            out.write((const char*)(resultFile.data()), resultFile.size());
-            out.close();
+            std::array<uint8_t, 16> decodeKey;
+            if (fileType != "prodConfig" && !armadilloKey_.empty() && KeyService::TryGetArmadilloKey(armadilloKey_, decodeKey)) {
+                SalsaDecrypt::Decrypt(resultFile, offset, resource.substr(16, 16), decodeKey);
+            }
+
+            fileCache_->SaveToCache(key, type, archive, productDirectory_, resultFile);
 
             return std::move(resultFile);
         }
@@ -353,6 +361,79 @@ std::vector<uint8_t> CDN::DownloadFile(
         archive.empty()
         ? "Exhausted all CDNs trying to download " + key
         : "Exhausted all CDNs trying to download " + key + " (archive " + archive + ")");
+}
+
+std::vector<uint8_t> CDN::DownloadFileFromLocal(
+    const std::string& type,
+    const std::string& key,
+    const std::string& archive,
+    int offset,
+    uint64_t expectedSize)
+{
+    std::string fileType = archive.empty() ? type : "data";
+    
+    // URL segments (same as HTTP version, but without server)
+    std::string seg1 = archive.empty() ? key.substr(0,2) : archive.substr(0,2);
+    std::string seg2 = archive.empty() ? key.substr(2,2) : archive.substr(2,2);
+    std::string resource = archive.empty() ? key : archive;
+
+    // Build local path: {productDirectory_}/{fileType}/{seg1}/{seg2}/{resource}
+    std::filesystem::path localPath = std::filesystem::path(*settings_.LocalTactPath) / productDirectory_/ fileType / seg1 / seg2 / resource;
+
+    if (!std::filesystem::exists(localPath)) {
+        throw std::runtime_error(
+            archive.empty()
+            ? "File not found locally: " + localPath.string()
+            : "Archive not found locally: " + localPath.string());
+    }
+
+    std::ifstream file(localPath, std::ios::binary);
+    if (!file) {
+        throw std::runtime_error("Unable to open local file: " + localPath.string());
+    }
+
+    // Determine what to read
+    size_t readSize = expectedSize;
+    if (archive.empty()) {
+        // For full files, read the entire file if size not specified, otherwise read expectedSize
+        if (readSize == 0) {
+            file.seekg(0, std::ios::end);
+            readSize = file.tellg();
+            file.seekg(0, std::ios::beg);
+        }
+    } else {
+        // For archive chunks, read the specified range starting at offset
+        file.seekg(offset, std::ios::beg);
+        if (readSize == 0) {
+            // If size not specified, read to end of file
+            file.seekg(0, std::ios::end);
+            size_t fileSize = file.tellg();
+            file.seekg(offset, std::ios::beg);
+            readSize = fileSize - offset;
+        }
+    }
+
+    std::vector<uint8_t> resultFile(readSize);
+    if (!file.read(reinterpret_cast<char*>(resultFile.data()), readSize)) {
+        // Check if we read some data before the error
+        size_t bytesRead = file.gcount();
+        if (bytesRead > 0 && bytesRead < readSize) {
+            resultFile.resize(bytesRead);
+        } else {
+            throw std::runtime_error("Failed to read from local file: " + localPath.string());
+        }
+    } else {
+        // Resize if we read less than expected
+        size_t bytesRead = file.gcount();
+        if (bytesRead < readSize) {
+            resultFile.resize(bytesRead);
+        }
+    }
+
+    // Dont write to cache when reading from local
+    //fileCache_->SaveToCache(key, type, archive, productDirectory_, resultFile);
+
+    return resultFile;
 }
 
 std::string PadLeft(const std::string& input, std::size_t totalLength, char symbol) {

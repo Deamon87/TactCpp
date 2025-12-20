@@ -13,14 +13,17 @@
 struct Settings {
     std::string Region        = "us";
     std::string Product       = "wow";
+    std::optional<std::string> TactName;
     RootWoW::LocaleFlags  Locale       = RootWoW::LocaleFlags::enUS;
     RootWoW::LoadMode     RootMode     = RootWoW::LoadMode::Normal;
     std::optional<std::filesystem::path> BaseDir;
     std::string BuildConfigPathOrHash;
     std::string CDNConfigPathOrHash;
+    std::string ArmadilloKey = "";
 
     std::string BuildConfig;
     std::string CDNConfig;
+    std::string ProductConfigHash;
 
     bool allowOnlineDownload = false;
 
@@ -30,7 +33,10 @@ struct Settings {
     std::filesystem::path CacheDir = "cache";
     std::string ListfileURL   = "https://github.com/wowdev/wow-listfile/releases/latest/download/community-listfile.csv";
     std::optional<std::filesystem::path> ListfilePath;
-    bool loadListFile = true;
+    bool loadListFile = false;
+
+    bool useTactLocal = false;
+    std::optional<std::filesystem::path> LocalTactPath;
 };
 
 #endif //SETTINGS_H

@@ -9,13 +9,14 @@
 #include <string>
 #include <stdexcept>
 #include <cstdint>
+#include <functional>
 
 namespace TACTLibUtils {
     inline bool startsWith(std::string_view str, std::string_view prefix) {
         return str.size() >= prefix.size() && 0 == str.compare(0, prefix.size(), prefix);
     }
 
-    inline std::vector<std::string> tokenize(std::string const &str, const std::string delim) {
+    inline std::vector<std::string> tokenize(std::string const &str, const std::string &delim) {
         size_t prev_start = 0;
         size_t start = 0;
 
@@ -30,7 +31,7 @@ namespace TACTLibUtils {
     }
 
     inline std::vector<std::string>
-    tokenizeAndFilter(std::string const &str, const std::string delim, std::function<bool(std::string &)> filterFunc) {
+    tokenizeAndFilter(std::string const &str, const std::string &delim, std::function<bool(std::string &)> filterFunc) {
         size_t prev_start = 0;
         size_t start = 0;
 

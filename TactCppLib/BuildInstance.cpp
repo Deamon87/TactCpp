@@ -14,6 +14,7 @@
 #include "BuildInfo.h"
 #include "utils/TactConfigParser.h"
 #include "utils/Jenkins96.h"
+#include "utils/json.hpp"
 
 namespace fs = std::filesystem;
 using namespace TACTLibUtils;
@@ -26,6 +27,10 @@ BuildInstance::~BuildInstance() {
 }
 
 void BuildInstance::LoadConfigs() {
+    if (settings_.useTactLocal && settings_.TactName.has_value()) {
+        cdn_->setProductDirectory(*settings_.TactName);
+    }
+
     if (settings_.BaseDir.has_value() && (
         (settings_.BuildConfigPathOrHash.empty() && settings_.BuildConfig.empty()) ||
         (settings_.CDNConfigPathOrHash.empty() && settings_.CDNConfig.empty())
@@ -46,6 +51,8 @@ void BuildInstance::LoadConfigs() {
         auto const &buildInfoEntry = matchedEntries[0];
         settings_.BuildConfigPathOrHash = buildInfoEntry.BuildConfig;
         settings_.CDNConfigPathOrHash = buildInfoEntry.CDNConfig;
+        settings_.ArmadilloKey = buildInfoEntry.Armadillo;
+
         cdn_->setProductDirectory(buildInfoEntry.CDNPath);
     }
     auto &buildConfigPath = settings_.BuildConfigPathOrHash;
@@ -86,18 +93,35 @@ void BuildInstance::Load() {
     // if a local base dir is set, switch CDN to local
     if (settings_.BaseDir.has_value()) {
         cdn_->OpenLocal();
-        LoadConfigs();
-    } else {
+    } else if (!settings_.useTactLocal) {
         auto versions = cdn_->GetPatchServiceFile(settings_.Product, "versions");
-        TactConfigParser::parse(versions, {"Region", "BuildConfig", "CDNConfig"}, [&](const auto &rec) {
+        TactConfigParser::parse(versions, {"Region", "BuildConfig", "CDNConfig", "ProductConfig"}, [&](const auto &rec) {
             if (settings_.Region != rec.at("Region")) { return true;} // continue if region do no match
 
-            settings_.BuildConfig = rec.at("BuildConfig");
-            settings_.CDNConfig = rec.at("CDNConfig");
+            settings_.BuildConfigPathOrHash = rec.at("BuildConfig");
+            settings_.CDNConfigPathOrHash = rec.at("CDNConfig");
+            settings_.ProductConfigHash = rec.at("ProductConfig");
 
             return false;
         });
+        {
+            auto prodConfigData = cdn_->GetFile("prodConfig", settings_.ProductConfigHash);
+            auto j = nlohmann::json::parse(prodConfigData.begin(), prodConfigData.end());
+            auto jsonPtr = nlohmann::json::json_pointer("/all/config/decryption_key_name");
+
+            if (j.contains(jsonPtr)) {
+                settings_.ArmadilloKey = j[jsonPtr];
+            }
+        }
     }
+    if (!settings_.ArmadilloKey.empty()) {
+        cdn_->setArmadilloKey(settings_.ArmadilloKey);
+        std::cout << "Set Armadillo key name to " + settings_.ArmadilloKey << std::endl;
+    }
+
+    LoadConfigs();
+
+
 
     if (!buildConfig_ || !cdnConfig_)
         throw std::runtime_error("Configs not loaded");
@@ -293,34 +317,31 @@ std::vector<uint8_t> BuildInstance::OpenFileByEKey(const std::vector<uint8_t> &e
         throw std::runtime_error("Indexes not loaded");
 
     auto [offset, size, archiveIdx] = groupIndex_->GetIndexInfo(eKey);
-    std::vector<uint8_t> data;
 
     if (offset == -1) {
+        // Not found in group index, check file index
+        auto [fileOffset, fileSize, arcIdx] = fileIndex_->GetIndexInfo(eKey);
 
-        auto [offset, size, arcIdx] = fileIndex_->GetIndexInfo(eKey);
-        if (size == -1) {
+        //Data from FileIndex should not have these fields set, when returned from IndexInstance class
+        assert(arcIdx == -1);
+        assert(fileOffset == -1);
+
+        if (fileSize == -1) {
             std::cout << "Warning: EKey " << bytesToHexLower(eKey)
-                      << " not found in group or file index and might not be available on CDN.\n";
-            data = cdn_->GetFile("data",
-                                 bytesToHexLower(eKey),
-                                 0,
-                                 decodedSize,
-                                 true);
-        } else {
-            data = cdn_->GetFile("data",
-                                 bytesToHexLower(eKey),
-                                 size,
-                                 decodedSize,
-                                 true);
+                      << " not found in group or file index and might not be available on CDN." << std::endl;
+            fileSize = 0;
         }
-    } else {
-        data = cdn_->GetFileFromArchive(bytesToHexLower(eKey),
-                                        cdnConfig_->Values.at("archives")[archiveIdx],
-                                        offset,
-                                        size,
-                                        decodedSize,
-                                        true);
-    }
 
-    return data;
+        return cdn_->GetFile("data", bytesToHexLower(eKey), fileSize, decodedSize, true);
+    } else {
+        // Found in group index - get from archive
+        return cdn_->GetFileFromArchive(
+            bytesToHexLower(eKey),
+            cdnConfig_->Values.at("archives")[archiveIdx],
+            offset,
+            size,
+            decodedSize,
+            true
+        );
+    }
 }

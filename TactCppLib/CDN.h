@@ -11,6 +11,7 @@
 #include "Settings.h"
 #include "CASCIndexInstance.h"
 #include "BLTE.h"
+#include "FileCache.h"
 
 class CDN {
 public:
@@ -54,6 +55,8 @@ public:
     const std::string& ProductDirectory() const { return productDirectory_; }
     void setProductDirectory(const std::string& value) { productDirectory_ = value; }
 
+    void setArmadilloKey(const std::string& value) { armadilloKey_ = value; }
+
 private:
     void LoadCDNs();
     void LoadCASCIndices();
@@ -66,16 +69,34 @@ private:
         uint64_t expectedSize = 0,
         int timeoutMs = 0);
 
+    std::vector<uint8_t> DownloadFileFromHTTP(
+        const std::string& type,
+        const std::string& key,
+        const std::string& archive,
+        int offset,
+        uint64_t expectedSize,
+        int timeoutMs);
+
+    std::vector<uint8_t> DownloadFileFromLocal(
+        const std::string& type,
+        const std::string& key,
+        const std::string& archive,
+        int offset,
+        uint64_t expectedSize);
+
     bool TryGetLocalFile(const std::string& eKey, std::vector<uint8_t>& outData);
 
+    std::unique_ptr<FileCache> fileCache_;
+
     std::vector<std::string> cdnServers_;
-    std::unordered_map<std::string, std::mutex> fileLocks_;
     std::mutex cdnLoadingMutex_;
     std::mutex cdnSettingMutex_;
-    bool hasLocal_ = false;
+    bool hasLocalCasc = false;
+
     std::unordered_map<uint8_t, std::unique_ptr<CASCIndexInstance>> cascIndices_;
     Settings settings_;
     std::string productDirectory_;
+    std::string armadilloKey_;
 };
 
 #endif //CDN_H
