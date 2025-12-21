@@ -15,8 +15,7 @@ inline void qr(uint32_t& x0, uint32_t& x1, uint32_t& x2, uint32_t& x3) {
    x0 ^= rotl32(x3 + x2, 18);
 }
 
-void salsa20_round(std::array<uint32_t, 16>& x) {
-    // Round 1
+inline void salsa20_round(std::array<uint32_t, 16>& x) {
     // Column quarter-rounds
     qr(x[0],  x[4],  x[8],  x[12]);
     qr(x[5],  x[9],  x[13], x[1]);

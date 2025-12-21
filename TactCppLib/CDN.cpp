@@ -430,6 +430,11 @@ std::vector<uint8_t> CDN::DownloadFileFromLocal(
         }
     }
 
+    std::array<uint8_t, 16> decodeKey;
+    if (fileType != "prodConfig" && !armadilloKey_.empty() && KeyService::TryGetArmadilloKey(armadilloKey_, decodeKey)) {
+        SalsaDecrypt::Decrypt(resultFile, offset, resource.substr(16, 16), decodeKey);
+    }
+
     // Dont write to cache when reading from local
     //fileCache_->SaveToCache(key, type, archive, productDirectory_, resultFile);
 
