@@ -16,8 +16,23 @@ IndexInstance::IndexInstance(const std::string &path, int16_t archiveIndex)
     if (!mmf_->isOpen()) {
         throw std::runtime_error("Failed to open memory-mapped file: " + path);
     }
-    fileData_ = static_cast<uint8_t const *>(mmf_->data());
-    indexSize_ = mmf_->size();
+
+    Initialize(static_cast<uint8_t const *>(mmf_->data()),  mmf_->size());
+}
+
+IndexInstance::IndexInstance(std::vector<uint8_t> &&fileData, int16_t archiveIndex)
+    : archiveIndex_(archiveIndex), vecFileData(std::move(fileData)) {
+
+    Initialize(vecFileData.data(), vecFileData.size());
+}
+
+IndexInstance::~IndexInstance() {
+//    std::cout << "IndexInstance destroyed" << std::endl << std::flush;
+};
+
+void IndexInstance::Initialize(const uint8_t * fileDataPtr, int fileDataSize ) {
+    fileData_ = fileDataPtr;
+    indexSize_ = fileDataSize;
 
     if (indexSize_ < sizeof(IndexFooter)) {
         throw std::runtime_error("File too small to contain IndexFooter");
@@ -40,10 +55,6 @@ IndexInstance::IndexInstance(const std::string &path, int16_t archiveIndex)
     ofsStartOfToc_ = static_cast<size_t>(numBlocks_) * blockSizeBytes_;
     ofsEndOfTocEkeys_ = ofsStartOfToc_ + static_cast<size_t>(footer_.keyBytes) * numBlocks_;
 }
-
-IndexInstance::~IndexInstance() {
-//    std::cout << "IndexInstance destroyed" << std::endl << std::flush;
-};
 
 std::tuple<int32_t, int32_t, int16_t>
 IndexInstance::GetIndexInfo(const std::vector<uint8_t> &eKeyTarget) const {
@@ -128,7 +139,7 @@ std::vector<IndexInstance::Entry> IndexInstance::GetAllEntries() {
     std::vector<Entry> entries;
     
     // Validate that memory-mapped file is still valid
-    if (!mmf_ || !mmf_->isOpen() || !fileData_) {
+    if (!fileData_) {
         return entries;  // Return empty vector
     }
     

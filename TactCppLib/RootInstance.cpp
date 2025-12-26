@@ -7,6 +7,8 @@
 #include <sstream>
 #include <iomanip>
 #include <memory>
+#include <map>
+#include <set>
 
 #include "utils/DataReader.h"
 #include "wow/WoWRootFlags.h"
@@ -21,6 +23,13 @@ private:
     std::ofstream m_file;
     uint32_t m_chunkIndex;
     const std::unique_ptr<ListFile> &m_listFile;
+    RootWoW::ContentFlags m_currentContentFlags;
+    
+    // Data for flag deduction
+    std::map<std::string, std::set<uint32_t>> m_extensionToFlags;  // extension -> set of content flags
+    std::map<uint32_t, std::set<std::string>> m_flagToExtensions;  // content flag -> set of extensions
+    std::map<std::string, uint32_t> m_extensionFileCount;          // extension -> count of files
+    std::map<uint32_t, uint32_t> m_flagFileCount;                  // content flag -> count of files
     
     static std::string ParseContentFlags(RootWoW::ContentFlags flags) {
         std::ostringstream oss;
@@ -50,8 +59,15 @@ private:
         uint32_t knownBits = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x80 | 0x100 | 0x800 | 0x8000000 | 0x10000000 | 0x20000000 | 0x40000000 | 0x80000000;
         uint32_t unknownBits = value & ~knownBits;
         if (unknownBits != 0) {
-            if (!first) oss << " | ";
-            oss << "Unknown(0x" << std::hex << unknownBits << std::dec << ")";
+            // Log each unknown bit individually
+            for (int bit = 0; bit < 32; ++bit) {
+                uint32_t bitMask = 1u << bit;
+                if (unknownBits & bitMask) {
+                    if (!first) oss << " | ";
+                    oss << "UnknownBit" << bit << "(0x" << std::hex << bitMask << std::dec << ")";
+                    first = false;
+                }
+            }
         }
         
         return oss.str();
@@ -91,8 +107,15 @@ private:
         uint32_t knownBits = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x20 | 0x40 | 0x80 | 0x100 | 0x200 | 0x400 | 0x800 | 0x1000 | 0x2000 | 0x4000 | 0x8000 | 0x10000 | 0x20000000 | 0x40000000;
         uint32_t unknownBits = value & ~knownBits;
         if (unknownBits != 0) {
-            if (!first) oss << " | ";
-            oss << "Unknown(0x" << std::hex << unknownBits << std::dec << ")";
+            // Log each unknown bit individually
+            for (int bit = 0; bit < 32; ++bit) {
+                uint32_t bitMask = 1u << bit;
+                if (unknownBits & bitMask) {
+                    if (!first) oss << " | ";
+                    oss << "UnknownBit" << bit << "(0x" << std::hex << bitMask << std::dec << ")";
+                    first = false;
+                }
+            }
         }
         
         return oss.str();
@@ -107,13 +130,108 @@ public:
         }
     }
     
+    void DeduceUnknownContentFlags() {
+        m_file << std::endl;
+        m_file << "========================================" << std::endl;
+        m_file << "=== CONTENT FLAG DEDUCTION ANALYSIS ===" << std::endl;
+        m_file << "========================================" << std::endl;
+        m_file << std::endl;
+        
+        // Find exclusive flag-extension associations
+        std::map<uint32_t, std::string> deducedFlags;
+        
+        for (const auto& [flagValue, extensions] : m_flagToExtensions) {
+            if (extensions.size() == 1) {
+                // This flag only appears with one extension
+                const std::string& ext = *extensions.begin();
+                
+                // Check if this extension only appears with this flag
+                const auto& flagsForExt = m_extensionToFlags.find(ext);
+                if (flagsForExt != m_extensionToFlags.end() && flagsForExt->second.size() == 1) {
+                    deducedFlags[flagValue] = ext;
+                }
+            }
+        }
+        
+        m_file << "Exclusive flag-extension associations found:" << std::endl;
+        m_file << std::endl;
+        
+        if (deducedFlags.empty()) {
+            m_file << "  No exclusive associations found." << std::endl;
+        } else {
+            for (const auto& [flagValue, extension] : deducedFlags) {
+                m_file << "  ContentFlag 0x" << std::hex << std::setw(8) << std::setfill('0') 
+                       << flagValue << std::dec 
+                       << " (" << ParseContentFlags(static_cast<RootWoW::ContentFlags>(flagValue)) << ")" 
+                       << std::endl;
+                m_file << "    <-> Extension: ." << extension << std::endl;
+                m_file << "    Files with this extension: " << m_extensionFileCount[extension] << std::endl;
+                m_file << "    Files with this flag: " << m_flagFileCount[flagValue] << std::endl;
+                m_file << std::endl;
+            }
+        }
+        
+        m_file << std::endl;
+        m_file << "========================================" << std::endl;
+        m_file << "=== PARTIAL ASSOCIATIONS (ANALYSIS) ===" << std::endl;
+        m_file << "========================================" << std::endl;
+        m_file << std::endl;
+        m_file << "Extensions and their associated content flags:" << std::endl;
+        m_file << std::endl;
+        
+        for (const auto& [extension, flags] : m_extensionToFlags) {
+            m_file << "  ." << extension << " (files: " << m_extensionFileCount.at(extension) << ")" << std::endl;
+            
+            // Calculate AND of all flags for this extension
+            uint32_t flagsAnd = 0xFFFFFFFF;
+            for (uint32_t flagValue : flags) {
+                flagsAnd &= flagValue;
+            }
+            
+            m_file << "    AND of all flags: 0x" << std::hex << std::setw(8) << std::setfill('0') 
+                   << flagsAnd << std::dec;
+            if (flagsAnd != 0) {
+                m_file << " (" << ParseContentFlags(static_cast<RootWoW::ContentFlags>(flagsAnd)) << ")";
+            } else {
+                m_file << " (None)";
+            }
+            m_file << std::endl;
+            
+            m_file << "    Individual flags:" << std::endl;
+            for (uint32_t flagValue : flags) {
+                m_file << "      - 0x" << std::hex << std::setw(8) << std::setfill('0') 
+                       << flagValue << std::dec 
+                       << " (" << ParseContentFlags(static_cast<RootWoW::ContentFlags>(flagValue)) << ")"
+                       << " [" << m_flagFileCount.at(flagValue) << " files total]" << std::endl;
+            }
+            m_file << std::endl;
+        }
+        
+        m_file << std::endl;
+        m_file << "Content flags and their associated extensions:" << std::endl;
+        m_file << std::endl;
+        
+        for (const auto& [flagValue, extensions] : m_flagToExtensions) {
+            m_file << "  0x" << std::hex << std::setw(8) << std::setfill('0') 
+                   << flagValue << std::dec 
+                   << " (" << ParseContentFlags(static_cast<RootWoW::ContentFlags>(flagValue)) << ")"
+                   << " [" << m_flagFileCount.at(flagValue) << " files]" << std::endl;
+            for (const std::string& ext : extensions) {
+                m_file << "    - ." << ext << " [" << m_extensionFileCount.at(ext) << " files]" << std::endl;
+            }
+            m_file << std::endl;
+        }
+    }
+    
     ~RootDumper() {
         if (m_file.is_open()) {
+            DeduceUnknownContentFlags();
             m_file.close();
         }
     }
     
     void StartChunk(RootWoW::ContentFlags contentFlags, RootWoW::LocaleFlags localeFlags) {
+        m_currentContentFlags = contentFlags;
         m_file << std::endl;
         m_file << "=== Chunk " << m_chunkIndex << " ===" << std::endl;
         m_file << "ContentFlags: 0x" << std::hex << std::setw(8) << std::setfill('0')
@@ -132,6 +250,21 @@ public:
             std::string filename = m_listFile->GetFilename(fdid);
             if (!filename.empty()) {
                 m_file << " (" << filename << ")";
+                
+                // Collect data for flag deduction
+                size_t dotPos = filename.find_last_of('.');
+                if (dotPos != std::string::npos && dotPos < filename.length() - 1) {
+                    std::string extension = filename.substr(dotPos + 1);
+                    // Convert to lowercase for consistency
+                    std::transform(extension.begin(), extension.end(), extension.begin(), ::tolower);
+                    
+                    uint32_t contentFlagValue = static_cast<uint32_t>(m_currentContentFlags);
+                    
+                    m_extensionToFlags[extension].insert(contentFlagValue);
+                    m_flagToExtensions[contentFlagValue].insert(extension);
+                    m_extensionFileCount[extension]++;
+                    m_flagFileCount[contentFlagValue]++;
+                }
             }
         }
         m_file << std::endl;

@@ -140,25 +140,29 @@ std::string GroupIndex::Generate(
                     indexPath = p.string();
                 }
             }
-            if (indexPath.empty()) {
-                cdn->GetFile("data", name + ".index");
-                indexPath = (std::filesystem::path(settings.CacheDir) / cdn->ProductDirectory() /
-                    "data" / (name + ".index")).string();
-            }
+            try {
+                IndexInstance idx =
+                    !indexPath.empty() ?
+                    IndexInstance(indexPath) :
+                    IndexInstance(cdn->GetFile("data", name + ".index"), -1);
 
-            IndexInstance idx(indexPath);
-            auto all = idx.GetAllEntries();
-            for (auto& tup : all) {
-                auto& [eKey, offset, size, _unused] = tup;
-                std::lock_guard lock(entryMutex);
-                Entries.push_back({
-                    .EKey = std::move(eKey),
-                    .Size = static_cast<uint32_t>(size),
-                    .ArchiveIndex = static_cast<uint16_t>(archiveIndex),
-                    .Offset = static_cast<uint32_t>(offset)
-                });
+
+                auto all = idx.GetAllEntries();
+                for (auto &tup: all) {
+                    auto &[eKey, offset, size, _unused] = tup;
+                    std::lock_guard lock(entryMutex);
+                    Entries.push_back({
+                                          .EKey = std::move(eKey),
+                                          .Size = static_cast<uint32_t>(size),
+                                          .ArchiveIndex = static_cast<uint16_t>(archiveIndex),
+                                          .Offset = static_cast<uint32_t>(offset)
+                                      });
+                }
+            } catch (...) {
+                std::cerr << "Failed to load index " << name << std::endl;
             }
         }));
+
     }
     for (auto& f : futures) f.get();
 
@@ -284,6 +288,8 @@ std::string GroupIndex::Generate(
     std::filesystem::create_directories(outDir);
     const std::string fname = (hash.empty() ? fullFooterHash : hash) + ".index";
     if (!hash.empty() && fullFooterHash != hash) {
+
+        std::cerr << "Footer MD5 mismatch: expected " + hash +", got " + fullFooterHash << std::endl;
         throw std::runtime_error("Footer MD5 mismatch: expected " + hash +", got " + fullFooterHash);
     }
     std::ofstream out(outDir / fname, std::ios::binary);
