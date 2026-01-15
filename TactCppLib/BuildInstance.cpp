@@ -26,15 +26,8 @@ BuildInstance::~BuildInstance() {
 //    std::cout << "BuildInstance destroyed" << std::endl << std::flush;
 }
 
-void BuildInstance::LoadConfigs() {
-    if (settings_.useTactLocal && settings_.TactName.has_value()) {
-        cdn_->setProductDirectory(*settings_.TactName);
-    }
-
-    if (settings_.BaseDir.has_value() && (
-        (settings_.BuildConfigPathOrHash.empty() && settings_.BuildConfig.empty()) ||
-        (settings_.CDNConfigPathOrHash.empty() && settings_.CDNConfig.empty())
-    )) {
+void BuildInstance::LoadVersionInfo() {
+    if (settings_.BaseDir.has_value()) {
         fs::path bp = fs::path(settings_.BaseDir.value()) / ".build.info";
         if (!fs::exists(bp)) throw std::runtime_error("No .build.info in basedir");
         BuildInfo bi(bp.string(), settings_, *cdn_);
@@ -49,12 +42,39 @@ void BuildInstance::LoadConfigs() {
                                      " in .build.info, are you sure this product is installed?");
 
         auto const &buildInfoEntry = matchedEntries[0];
-        settings_.BuildConfigPathOrHash = buildInfoEntry.BuildConfig;
-        settings_.CDNConfigPathOrHash = buildInfoEntry.CDNConfig;
-        settings_.ArmadilloKey = buildInfoEntry.Armadillo;
+        if (settings_.BuildConfigPathOrHash.empty())
+            settings_.BuildConfigPathOrHash = buildInfoEntry.BuildConfig;
 
-        cdn_->setProductDirectory(buildInfoEntry.CDNPath);
+        if (settings_.CDNConfigPathOrHash.empty())
+            settings_.CDNConfigPathOrHash = buildInfoEntry.CDNConfig;
+
+        if (settings_.ArmadilloKey.empty())
+            settings_.ArmadilloKey = buildInfoEntry.Armadillo;
+
+        if (settings_.CDNPath.empty())
+            settings_.CDNPath = buildInfoEntry.CDNPath;
     }
+
+    if ((!settings_.BaseDir.has_value() || settings_.BaseDir->empty()) && !settings_.useTactLocal) {
+        auto versions = cdn_->GetPatchServiceFile(settings_.Product, "versions");
+        TactConfigParser::parse(versions, {"Region", "BuildConfig", "CDNConfig", "ProductConfig"}, [&](const auto &rec) {
+            if (settings_.Region != rec.at("Region")) { return true;} // continue if region do no match
+
+            if (settings_.BuildConfigPathOrHash.empty())
+                settings_.BuildConfigPathOrHash = rec.at("BuildConfig");
+
+            if (settings_.CDNConfigPathOrHash.empty())
+                settings_.CDNConfigPathOrHash = rec.at("CDNConfig");
+
+            if (settings_.ProductConfigHash.empty())
+                settings_.ProductConfigHash = rec.at("ProductConfig");
+
+            return false;
+        });
+    }
+}
+
+void BuildInstance::LoadConfigs() {
     auto &buildConfigPath = settings_.BuildConfigPathOrHash;
     auto &cdnConfigPath = settings_.CDNConfigPathOrHash;
 
@@ -90,20 +110,15 @@ void BuildInstance::LoadConfigs() {
 void BuildInstance::Load() {
     cdn_ = std::make_unique<CDN>(settings_);
 
+    LoadVersionInfo();
+
+    if (!settings_.CDNPath.empty())
+        cdn_->setProductDirectory(settings_.CDNPath);
+
     // if a local base dir is set, switch CDN to local
     if (settings_.BaseDir.has_value()) {
         cdn_->OpenLocal();
     } else if (!settings_.useTactLocal) {
-        auto versions = cdn_->GetPatchServiceFile(settings_.Product, "versions");
-        TactConfigParser::parse(versions, {"Region", "BuildConfig", "CDNConfig", "ProductConfig"}, [&](const auto &rec) {
-            if (settings_.Region != rec.at("Region")) { return true;} // continue if region do no match
-
-            settings_.BuildConfigPathOrHash = rec.at("BuildConfig");
-            settings_.CDNConfigPathOrHash = rec.at("CDNConfig");
-            settings_.ProductConfigHash = rec.at("ProductConfig");
-
-            return false;
-        });
         {
             auto prodConfigData = cdn_->GetFile("prodConfig", settings_.ProductConfigHash);
             auto j = nlohmann::json::parse(prodConfigData.begin(), prodConfigData.end());
@@ -120,8 +135,6 @@ void BuildInstance::Load() {
     }
 
     LoadConfigs();
-
-
 
     if (!buildConfig_ || !cdnConfig_)
         throw std::runtime_error("Configs not loaded");

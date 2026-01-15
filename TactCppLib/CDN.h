@@ -88,6 +88,7 @@ private:
 
     std::unique_ptr<FileCache> fileCache_;
 
+    bool onlineCDNsLoaded = false;
     std::vector<std::string> cdnServers_;
     std::mutex cdnLoadingMutex_;
     std::mutex cdnSettingMutex_;

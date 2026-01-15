@@ -82,21 +82,35 @@ void SalsaDecrypt::Decrypt(std::vector<uint8_t>& data, uint64_t offset, const st
     int decryptOffset = offset % 64;
 
     int j = 0;
-    int length = data.size();
+    int      length  = data.size();
+    uint8_t* dataPtr = data.data();
     while (length > 0) {
         std::array<uint32_t, 16> output;
         salsa20Math(state, output);
 
-        int blockSize = std::min(64 - decryptOffset, length);
-        for (int i = 0; i < blockSize; i++) {
-            int inputIndex = decryptOffset + i;
-            uint8_t tmp = ((output[inputIndex >> 2] >> ((inputIndex & 3) * 8))) & 0xff;
-            uint8_t u_data = data[j];
+        // Cast output to byte array for direct byte access
+        const uint8_t* keystream = (const uint8_t*)(output.data()) + decryptOffset;
 
-            uint8_t decoded = u_data ^ tmp;
-            data[j] = decoded;
-            j++;
+        int blockSize = std::min(64 - decryptOffset, length);
+
+        int remaining = blockSize;
+
+        // Process 8-byte chunks
+        while (remaining >= 8) {
+            *(uint64_t*)(dataPtr) ^= *(const uint64_t*)(keystream);
+
+            dataPtr += 8;
+            keystream += 8;
+            remaining -= 8;
         }
+        
+        // Process remaining bytes one by one
+        while (remaining > 0) {
+            *dataPtr++ ^= *keystream++;
+            remaining--;
+        }
+        
+        j += blockSize;
         length -= blockSize;
         decryptOffset = (decryptOffset + blockSize) % 64;
 

@@ -155,6 +155,12 @@ std::string CDN::GetDecodedFilePath(const std::string &type,
 }
 
 void CDN::LoadCDNs() {
+    if (onlineCDNsLoaded) return;
+    std::scoped_lock lock(cdnLoadingMutex_);
+    if (onlineCDNsLoaded) return;
+
+    if ((!productDirectory_.empty() && !cdnServers_.empty()) || settings_.useTactLocal) return;
+
     auto start = std::chrono::steady_clock::now();
 
     std::string url = std::format("http://{}.patch.battle.net:1119/{}/cdns", settings_.Region, settings_.Product);
@@ -195,7 +201,7 @@ void CDN::LoadCDNs() {
             if (recordTokens[NameIndex] != settings_.Region) continue;
 
             if (productDirectory_.empty())
-                productDirectory_ = recordTokens[PathIndex];
+                setProductDirectory(recordTokens[PathIndex]);
 
             auto servers = tokenize(recordTokens[HostsIndex], " ");
             SetCDNs(servers);
@@ -205,6 +211,8 @@ void CDN::LoadCDNs() {
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start).count();
     std::cout << "Loaded and sorted CDNs in " << elapsed << "ms" << std::endl << std::flush;;
+
+    onlineCDNsLoaded = true;
 }
 
 void CDN::LoadCASCIndices() {
@@ -263,6 +271,11 @@ std::vector<uint8_t> CDN::DownloadFile(
         }
     }
 
+    // Ensure CDN list is loaded (so that the productDirectory is filled)
+    if (productDirectory_.empty()) {
+        LoadCDNs();
+    }
+
     // 2) Try to load from cache
     auto cachedData = fileCache_->TryLoadFromCache(key, type, archive, productDirectory_, expectedSize);
     if (!cachedData.empty()) {
@@ -273,11 +286,9 @@ std::vector<uint8_t> CDN::DownloadFile(
          throw std::runtime_error("Failed to load " + key + " file from local ");
     }
 
-    // 4) Ensure CDN list is loaded (so that the productDirectory is filled)
+    // 4) Try load data from CDN either way (function has prevention from double load)
     {
-        std::scoped_lock lock(cdnLoadingMutex_);
-        if (cdnServers_.empty() && !settings_.useTactLocal)
-            LoadCDNs();
+        LoadCDNs();
     }
 
     // 5) Get file from CDN(s)

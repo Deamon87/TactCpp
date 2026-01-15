@@ -61,6 +61,7 @@ private:
 
     // load the build+CDN configs (path or 32-char hex ID)
     void LoadConfigs();
+    void LoadVersionInfo();
 };
 
 

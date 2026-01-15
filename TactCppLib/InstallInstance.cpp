@@ -105,6 +105,5 @@ const bool InstallInstance::getCKeyByName(const std::string& fileName, std::vect
         return false;
 
     auto & fileEntry = Entries_[itFile->second];
-
     cKeyTarget = fileEntry.md5;
 }

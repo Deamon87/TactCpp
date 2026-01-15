@@ -13,7 +13,7 @@
 struct Settings {
     std::string Region        = "us";
     std::string Product       = "wow";
-    std::optional<std::string> TactName;
+    std::string CDNPath;
     RootWoW::LocaleFlags  Locale       = RootWoW::LocaleFlags::enUS;
     RootWoW::LoadMode     RootMode     = RootWoW::LoadMode::Normal;
     std::optional<std::filesystem::path> BaseDir;
