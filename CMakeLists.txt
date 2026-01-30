@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.0)
+cmake_minimum_required(VERSION 3.20)
 project(TactCpp)
 
 include(FetchContent)
@@ -36,13 +36,27 @@ endif()
 
 #zlib
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
-FetchContent_Declare(zlib
+
+find_package(ZLIB QUIET)
+
+if(NOT (TARGET ZLIB::ZLIB OR TARGET ZLIB::zlib OR TARGET zlib))
+    message(STATUS "ZLIB targets not found. Fetching from source...")
+    
+    FetchContent_Declare(zlib
 		GIT_REPOSITORY https://github.com/madler/zlib.git
 		GIT_TAG 5a82f71ed1dfc0bec044d9702463dbdf84ea3b71 # latest master commit
 		EXCLUDE_FROM_ALL
-)
-FetchContent_GetProperties(zlib)
-FetchContent_MakeAvailable(zlib)
+	)	
+    
+    set(ZLIB_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    
+    FetchContent_MakeAvailable(zlib)
+    if(TARGET zlibstatic AND NOT TARGET ZLIB::ZLIB)
+        add_library(ZLIB::ZLIB ALIAS zlibstatic)
+    endif()
+else()
+    message(STATUS "ZLIB target is already available. Skipping FetchContent.")
+endif()
 
 
 add_library(TactCppLib STATIC
