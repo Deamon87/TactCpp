@@ -10,6 +10,8 @@
 #include "Settings.h"
 #include "wow/WoWRootFlags.h"
 
+class ListFile;
+
 class RootInstance {
 public:
     typedef std::array<uint8_t, 16> MD5;
@@ -24,7 +26,8 @@ public:
         MD5          md5;
     };
 
-    explicit RootInstance(const std::string& path, const Settings& settings);
+    explicit RootInstance(const std::string& path, const Settings& settings, const std::unique_ptr<ListFile> &listFile);
+    ~RootInstance();
 
     std::vector<RootEntry>    GetEntriesByFDID(uint32_t fileDataID) const;
     std::vector<RootEntry>    GetEntriesByLookup(uint64_t lookup) const;

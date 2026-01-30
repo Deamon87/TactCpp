@@ -6,8 +6,10 @@
 #define INSTALLINSTANCE_H
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <cstdint>
+#include <memory>
 #include "MemoryMappedFile.h"
 
 struct InstallTagEntry {
@@ -26,17 +28,20 @@ struct InstallFileEntry {
 class InstallInstance {
 public:
     explicit InstallInstance(const std::string& path);
+    ~InstallInstance();
 
     const std::vector<InstallTagEntry>&   getTags()    const;
     const std::vector<InstallFileEntry>&  getEntries() const;
+    const bool getCKeyByName(const std::string& fileName, std::vector<uint8_t>& cKeyTarget) const;
 
 private:
-    MemoryMappedFile                        mmf_;
+    std::shared_ptr<MemoryMappedFile>       mmf_;
     uint8_t                                 HashSize_;
     uint16_t                                NumTags_;
     uint32_t                                NumEntries_;
     std::vector<InstallTagEntry>            Tags_;
     std::vector<InstallFileEntry>           Entries_;
+    std::unordered_map<std::string, uint32_t>           EntriesByName;
 };
 
 #endif //INSTALLINSTANCE_H

@@ -3,17 +3,12 @@
 //
 
 #include "BLTE.h"
-
-// BLTE.cpp
-#include "BLTE.h"
 #include <stdexcept>
 #include <zlib.h>
 #include <cstring>
 
 #include "utils/DataReader.h"
 #include "utils/KeyService.h"
-
-// In BLTE.cpp, using DataReader:
 
 std::vector<uint8_t> BLTE::Decode(const std::vector<uint8_t>& data, uint64_t totalDecompSize) {
     const size_t fixedHeaderSize = 8;
@@ -87,7 +82,7 @@ std::vector<uint8_t> BLTE::Decode(const std::vector<uint8_t>& data, uint64_t tot
 
         char mode = static_cast<char>(data[compOffset]);
 
-        HandleDataBlock( mode, data.data() + compOffset + 1, compSize - 1, static_cast<int>(chunkIndex),
+        HandleDataBlock( mode, data.data() + compOffset + 1, compSize, static_cast<int>(chunkIndex),
             decompData.data() + decompOffset, decompSize
         );
 
@@ -100,9 +95,11 @@ std::vector<uint8_t> BLTE::Decode(const std::vector<uint8_t>& data, uint64_t tot
 }
 
 void BLTE::HandleDataBlock(char mode,
-                           const uint8_t* compData, size_t compSize,
+                           const uint8_t* compData,
+                           size_t compSize,
                            int chunkIndex,
-                           uint8_t* decompData, size_t decompSize) {
+                           uint8_t* decompData,
+                           size_t decompSize) {
     switch (mode) {
         case 'N':
             std::memcpy(decompData, compData, decompSize);
@@ -143,7 +140,7 @@ void BLTE::HandleDataBlock(char mode,
         }
 
         default:
-            throw std::runtime_error(std::string("Invalid BLTE chunk mode: ") + mode);
+            throw std::runtime_error(std::string("Invalid BLTE chunk mode: ") + std::to_string((int)mode));
     }
 }
 
@@ -167,7 +164,7 @@ bool BLTE::TryDecrypt(const uint8_t* data, size_t dataSize,
 
     // 4) ivSize
     uint8_t ivSize = dr.ReadUInt8();
-    if (ivSize != 4 || ivSize > 0x10)
+    if ((ivSize != 4 && ivSize != 8) || ivSize > 0x10)
         throw std::runtime_error("IVSize invalid");
 
     // 5) IV bytes

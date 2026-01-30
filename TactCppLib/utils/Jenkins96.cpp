@@ -40,7 +40,7 @@ uint64_t Jenkins96::HashCore(std::vector<uint8_t>& data) {
     size_t len = data.size();
 
     // Process 12-byte blocks
-    for (size_t j = 0; j + 12 <= len; j += 12) {
+    for (size_t j = 0; j + 12 < len; j += 12) {
         const uint32_t* p = reinterpret_cast<const uint32_t*>(bytes + j);
         a += p[0];
         b += p[1];

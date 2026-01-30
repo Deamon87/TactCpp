@@ -1,5 +1,6 @@
 #include "IndexInstance.h"
 #include <vector>
+#include <iostream>
 #include <algorithm>
 #include <cstring>
 #include <cmath>
@@ -15,8 +16,23 @@ IndexInstance::IndexInstance(const std::string &path, int16_t archiveIndex)
     if (!mmf_->isOpen()) {
         throw std::runtime_error("Failed to open memory-mapped file: " + path);
     }
-    fileData_ = static_cast<uint8_t const *>(mmf_->data());
-    indexSize_ = mmf_->size();
+
+    Initialize(static_cast<uint8_t const *>(mmf_->data()),  mmf_->size());
+}
+
+IndexInstance::IndexInstance(std::vector<uint8_t> &&fileData, int16_t archiveIndex)
+    : archiveIndex_(archiveIndex), vecFileData(std::move(fileData)) {
+
+    Initialize(vecFileData.data(), vecFileData.size());
+}
+
+IndexInstance::~IndexInstance() {
+//    std::cout << "IndexInstance destroyed" << std::endl << std::flush;
+};
+
+void IndexInstance::Initialize(const uint8_t * fileDataPtr, int fileDataSize ) {
+    fileData_ = fileDataPtr;
+    indexSize_ = fileDataSize;
 
     if (indexSize_ < sizeof(IndexFooter)) {
         throw std::runtime_error("File too small to contain IndexFooter");
@@ -41,7 +57,12 @@ IndexInstance::IndexInstance(const std::string &path, int16_t archiveIndex)
 }
 
 std::tuple<int32_t, int32_t, int16_t>
-IndexInstance::GetIndexInfo(std::span<const uint8_t> eKeyTarget) const {
+IndexInstance::GetIndexInfo(const std::vector<uint8_t> &eKeyTarget) const {
+    // Validate that memory-mapped file is still valid
+    if (!mmf_ || !mmf_->isOpen() || !fileData_) {
+        return {-1, -1, -1};
+    }
+    
     // 1) Block-level binary search on TOC e-keys
     auto tocStart = fileData_ + ofsStartOfToc_;
     auto tocEnd = fileData_ + ofsEndOfTocEkeys_;
@@ -70,7 +91,7 @@ IndexInstance::GetIndexInfo(std::span<const uint8_t> eKeyTarget) const {
         entryPtrs.push_back(blockBase + static_cast<size_t>(i) * entrySize_);
     }
 
-    auto entryIt = std::lower_bound(
+    auto entryIt = std::upper_bound(
         entryPtrs.begin(), entryPtrs.end(),
         eKeyTarget.data(),
         [&](uint8_t const *lhs, uint8_t const *rhs) {
@@ -78,8 +99,10 @@ IndexInstance::GetIndexInfo(std::span<const uint8_t> eKeyTarget) const {
         }
     );
 
-    if (entryIt == entryPtrs.end())
+    if (entryIt == entryPtrs.begin())
         return {-1, -1, -1};
+
+    entryIt--; // Correction for upper bound
 
     auto entry = *entryIt;
     if (std::memcmp(entry, eKeyTarget.data(), footer_.keyBytes) != 0)
@@ -87,7 +110,7 @@ IndexInstance::GetIndexInfo(std::span<const uint8_t> eKeyTarget) const {
 
     DataReader dr(const_cast<uint8_t*>(entry), entrySize_);
     // skip over the key
-    dr.SetOffset(footer_.keyBytes);
+    dr.sliceAndAdvance(footer_.keyBytes);
 
     // size always big-endian 32-bit
     assert(footer_.sizeBytes == 4);
@@ -114,6 +137,12 @@ IndexInstance::GetIndexInfo(std::span<const uint8_t> eKeyTarget) const {
 
 std::vector<IndexInstance::Entry> IndexInstance::GetAllEntries() {
     std::vector<Entry> entries;
+    
+    // Validate that memory-mapped file is still valid
+    if (!fileData_) {
+        return entries;  // Return empty vector
+    }
+    
     const uint8_t *fileData = fileData_;
 
     for (int i = 0; i < numBlocks_; ++i) {

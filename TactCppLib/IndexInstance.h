@@ -13,11 +13,12 @@ class IndexInstance {
 public:
     // Construct from file path; optional archiveIndex for group archives
     IndexInstance(const std::string& path, int16_t archiveIndex = -1);
-    ~IndexInstance() = default;
+    IndexInstance(std::vector<uint8_t> &&fileData, int16_t archiveIndex = -1);
+    ~IndexInstance();
 
     // Returns (offset, size, archiveIndex). If not found: (-1, -1, -1)
     std::tuple<int32_t, int32_t, int16_t>
-    GetIndexInfo(std::span<const uint8_t> eKeyTarget) const;
+    GetIndexInfo(const std::vector<uint8_t> &eKeyTarget) const;
 
     struct Entry {
         std::vector<uint8_t> eKey;
@@ -29,6 +30,8 @@ public:
     std::vector<Entry> GetAllEntries();
 
 private:
+    void Initialize(const uint8_t * fileDataPtr, int fileDataSize );
+
     struct IndexFooter {
         uint8_t formatRevision, flags0, flags1;
         uint8_t blockSizeKBytes, offsetBytes, sizeBytes, keyBytes, hashBytes;
@@ -37,8 +40,10 @@ private:
     };
 
     std::shared_ptr<MemoryMappedFile>   mmf_;
-    uint8_t const*      fileData_;
+    uint8_t const*      fileData_ = nullptr;
     size_t              indexSize_;
+
+    std::vector<uint8_t> vecFileData;
 
     IndexFooter         footer_;
     bool                isFileIndex_;

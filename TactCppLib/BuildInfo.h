@@ -29,6 +29,10 @@ class BuildInfo {
 public:
     std::vector<AvailableBuild> Entries;
 
+    ~BuildInfo() {
+//        std::cout << "BuildInfo destroyed" << std::endl;
+    }
+
     BuildInfo(const std::string& path, const Settings& settings, CDN& cdn) {
         std::unordered_map<std::string, uint8_t> headerMap;
         std::unordered_map<std::string, std::string> folderMap;

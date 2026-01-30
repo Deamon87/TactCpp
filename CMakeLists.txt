@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
+
 project(TactCpp)
 
 include(FetchContent)
@@ -14,24 +15,31 @@ SET(CURL_USE_LIBPSL 0)
 SET(BUILD_LIBCURL_DOCS 0)
 SET(ENABLE_CURL_MANUAL 0)
 SET(CURL_ZLIB OFF CACHE STRING "" FORCE) # disable this lib to download the zlib as external project
-FetchContent_Declare(cpr
-		GIT_REPOSITORY https://github.com/libcpr/cpr.git
-		GIT_TAG 2b2b16989708d81d4fe062240e085a2f5a61f74a # the commit hash for 1.9.9
-		EXCLUDE_FROM_ALL
-)
 
-#FetchContent_MakeAvailable(cpr)
-FetchContent_GetProperties(cpr)
-message("cpr_POPULATED = ${cpr_POPULATED}")
-if(NOT cpr_POPULATED)
-#	 Fetch the content using previously declared details
-	FetchContent_MakeAvailable(cpr)
-	message("cpr_BINARY_DIR = ${cpr_BINARY_DIR}")
-	message("cpr_SOURCE_DIR = ${cpr_SOURCE_DIR}")
-#	 Bring the populated content into the build
-	set(BUILD_SHARED_LIBS ON CACHE BOOL "")
-#	add_subdirectory(${cpr_SOURCE_DIR} ${cpr_BINARY_DIR} EXCLUDE_FROM_ALL)
-	set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
+# First, try to find CPR if it's already installed on the system
+find_package(cpr QUIET)
+
+if(NOT cpr_FOUND)
+    # If not found, check if it's already been fetched by another dependency
+    FetchContent_Declare(cpr
+        GIT_REPOSITORY https://github.com/libcpr/cpr.git
+        GIT_TAG 2b2b16989708d81d4fe062240e085a2f5a61f74a # the commit hash for 1.9.9
+        EXCLUDE_FROM_ALL
+    )
+
+    FetchContent_GetProperties(cpr)
+    message("cpr_POPULATED = ${cpr_POPULATED}")
+
+    if(NOT cpr_POPULATED)
+        # Fetch the content using previously declared details
+        FetchContent_MakeAvailable(cpr)
+        message("cpr_BINARY_DIR = ${cpr_BINARY_DIR}")
+        message("cpr_SOURCE_DIR = ${cpr_SOURCE_DIR}")
+
+        # Bring the populated content into the build
+        set(BUILD_SHARED_LIBS ON CACHE BOOL "")
+        set(BUILD_SHARED_LIBS OFF CACHE BOOL "")
+    endif()
 endif()
 
 #zlib
@@ -72,6 +80,12 @@ add_library(TactCppLib STATIC
         TactCppLib/Settings.h
         TactCppLib/RootInstance.cpp
         TactCppLib/RootInstance.h
+        TactCppLib/ListFile.cpp
+        TactCppLib/ListFile.h
+        TactCppLib/utils/SalsaDecrypt.h
+        TactCppLib/utils/SalsaDecrypt.cpp
+        TactCppLib/FileCache.h
+        TactCppLib/FileCache.cpp
 		TactCppLib/MemoryMappedFile.cpp
 		TactCppLib/MemoryMappedFile.h
 		TactCppLib/utils/BinaryUtils.h
@@ -96,6 +110,8 @@ add_library(TactCppLib STATIC
 target_link_libraries(TactCppLib cpr::cpr)
 target_link_libraries(TactCppLib zlib)
 
+set_property(TARGET TactCppLib PROPERTY CXX_STANDARD 23)
+set_property(TARGET TactCppLib PROPERTY CXX_STANDARD_REQUIRED ON)
 
 add_executable(TACTToolCpp src/main.cpp)
 

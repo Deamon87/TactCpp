@@ -1,18 +1,20 @@
 #include "InstallInstance.h"
 #include <stdexcept>
 #include <cstring>
+#include <iostream>
 
 #include "utils/BinaryUtils.h"
 #include "utils/DataReader.h"
 
 InstallInstance::InstallInstance(const std::string& path)
-    : mmf_(path, /*write=*/false)
 {
-    if (!mmf_.isOpen())
+    mmf_ = std::make_shared<MemoryMappedFile>(path, /*write=*/false);
+    
+    if (!mmf_->isOpen())
         throw std::runtime_error("Cannot open memory-mapped file: " + path);
 
-    auto* base = static_cast<uint8_t*>(mmf_.data());
-    const size_t bufLen = mmf_.size();
+    auto* base = static_cast<uint8_t*>(mmf_->data());
+    const size_t bufLen = mmf_->size();
     if (!base || bufLen < 10)
         throw std::runtime_error("File too small or invalid mapping");
 
@@ -82,7 +84,12 @@ InstallInstance::InstallInstance(const std::string& path)
         }
 
         Entries_.push_back({ name, std::move(contentHash), sz, std::move(entryTags) });
+        EntriesByName.insert({name, Entries_.size()});
     }
+}
+
+InstallInstance::~InstallInstance() {
+//    std::cout << "InstallInstance destroyed" << std::endl;
 }
 
 const std::vector<InstallTagEntry>& InstallInstance::getTags() const {
@@ -91,4 +98,12 @@ const std::vector<InstallTagEntry>& InstallInstance::getTags() const {
 
 const std::vector<InstallFileEntry>& InstallInstance::getEntries() const {
     return Entries_;
+}
+const bool InstallInstance::getCKeyByName(const std::string& fileName, std::vector<uint8_t>& cKeyTarget) const {
+    auto itFile = EntriesByName.find("file-index");
+    if (itFile == EntriesByName.end())
+        return false;
+
+    auto & fileEntry = Entries_[itFile->second];
+    cKeyTarget = fileEntry.md5;
 }

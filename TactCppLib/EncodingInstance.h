@@ -26,8 +26,8 @@ struct TableSchema {
     // fileSize: total file size
     // xKey: pointer to the key bytes to lookup
     // keyLen: length of xKey
-    // returns a pointer+length pair for the resolved page
-    std::pair<const uint8_t*, int64_t>
+    // returns an offset to fileData + length pair for the resolved page
+    std::pair<int64_t, int64_t>
     ResolvePage(const uint8_t* fileData, size_t fileSize,
                 const uint8_t* xKey, size_t keyLen) const;
 };
@@ -72,6 +72,8 @@ public:
     // lookup cKey -> (count, encKeys, decodedSize)
     EncodingResult FindContentKey(const std::vector<uint8_t>& cKeyTarget) const;
     EncodingResult FindContentKey(const std::array<uint8_t, 16>& cKeyTarget) const;
+    EncodingResult FindContentKey(const uint8_t *ptr, int keyLength) const;
+
 
     // lookup eKey -> (eSpec string, encodedFileSize)
     std::pair<std::string, uint64_t>
@@ -79,7 +81,6 @@ public:
 
 private:
     void ReadHeader(uint8_t& version, EncodingSchema& schema);
-    EncodingResult FindContentKey(const uint8_t *ptr, int keyLength) const;
 
     std::string           _filePath;
     size_t                _fileSize;
@@ -89,8 +90,8 @@ private:
     const uint8_t*        _view         = nullptr;
 
     EncodingSchema        _schema;
-    mutable std::vector<std::string> _encodingSpecs;
-    mutable std::mutex    _specsMutex;
+//    mutable std::vector<std::string> _encodingSpecs;
+//    mutable std::mutex    _specsMutex;
 };
 }
 

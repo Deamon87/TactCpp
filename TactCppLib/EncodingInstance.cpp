@@ -4,6 +4,7 @@
 #include <cassert>
 #include <chrono>
 #include <thread>
+#include <iostream>
 
 #include "utils/DataReader.h"
 
@@ -17,7 +18,7 @@ EncodingInstance::EncodingInstance(const std::string &filePath, int fileSize) : 
     // open file
     m_file = std::make_shared<MemoryMappedFile>(filePath);
 
-    _fileSize = fileSize == -1 ? m_file->size() : fileSize;
+    _fileSize = fileSize == -1 ? m_file->size() : std::min<int>(fileSize, m_file->size());
 
     // map view
     _view = static_cast<const uint8_t *>(m_file->data());
@@ -32,7 +33,7 @@ EncodingInstance::EncodingInstance(const std::string &filePath, int fileSize) : 
 }
 
 EncodingInstance::~EncodingInstance() {
-
+//    std::cout << "EncodingInstance destroyed" << std::endl;
 }
 
 void EncodingInstance::ReadHeader(uint8_t& version, EncodingSchema& schema) {
@@ -57,13 +58,15 @@ void EncodingInstance::ReadHeader(uint8_t& version, EncodingSchema& schema) {
     int32_t ePgCnt  = reader.ReadInt32BE();          // h[13–16]
 
     // Skip the one reserved byte at h[17]
-    reader.ReadUInt8();
+    auto reserved = reader.ReadUInt8();
+    assert(reserved == 0);
 
     // Read the size of the spec section (h[18–21])
     int32_t eSpecSz = reader.ReadInt32BE();
 
     // --- compute ranges ---
     std::size_t off = reader.GetOffset();  // should be 22 now
+    assert(off == 22);
 
     Range rSpec{ off, off + std::size_t(eSpecSz) };
 
@@ -95,10 +98,15 @@ EncodingResult EncodingInstance::FindContentKey(const std::vector<uint8_t>& cKey
 }
 
 EncodingResult EncodingInstance::FindContentKey(const uint8_t *keyPtr, int keyLength) const {
-    auto [ptr, sz] = _schema.cEKey.ResolvePage(_view, _fileSize,
-                                               keyPtr, keyLength);
+    // Validate that memory-mapped file is still valid
+    if (!m_file || !m_file->isOpen() || !_view) {
+        return EncodingInstance::Zero;
+    }
+    
+    auto [offset, sz] = _schema.cEKey.ResolvePage(_view, _fileSize, keyPtr, keyLength);
+    assert(offset + sz <= _fileSize);
 
-    DataReader reader(const_cast<uint8_t*>(ptr), sz);
+    DataReader reader(const_cast<uint8_t*>(_view + offset), sz);
 
     while (reader.GetOffset() < sz) {
         const std::size_t recordStart = reader.GetOffset();
@@ -111,14 +119,17 @@ EncodingResult EncodingInstance::FindContentKey(const uint8_t *keyPtr, int keyLe
 
         // Compare cKey
         std::size_t cKeyOff = reader.GetOffset();
-        if (SequenceEqual(ptr + cKeyOff, keyPtr, _schema.cKeySize)) {
+        assert(offset + cKeyOff + _schema.eKeySize <= _fileSize);
+        if (SequenceEqual(_view + offset + cKeyOff, keyPtr, _schema.cKeySize)) {
             // Read eKeys
             std::size_t eKeysOff = cKeyOff + _schema.cKeySize;
             std::size_t eKeysLen = std::size_t(cnt) * _schema.eKeySize;
-            assert(eKeysOff + eKeysLen <= sz);
 
-            std::vector<uint8_t> keys(ptr + eKeysOff,
-                                      ptr + eKeysOff + eKeysLen);
+            assert(eKeysOff + eKeysLen <= sz);
+            assert(offset + eKeysOff + eKeysLen <= _fileSize);
+
+            std::vector<uint8_t> keys(_view + offset + eKeysOff,
+                                      _view + offset + eKeysOff + eKeysLen);
             return EncodingResult{ cnt, std::move(keys), decSize };
         }
 
@@ -135,60 +146,68 @@ EncodingResult EncodingInstance::FindContentKey(const uint8_t *keyPtr, int keyLe
 
 std::pair<std::string, uint64_t>
 EncodingInstance::GetESpec(const std::vector<uint8_t>& target) {
-    // Lazy-load the spec strings (thread-safe)
-    {
-        std::lock_guard<std::mutex> lk(_specsMutex);
-        if (_encodingSpecs.empty()) {
-            const std::size_t start  = _schema.encodingSpec.start;
-            const std::size_t end    = _schema.encodingSpec.end;
-            const std::size_t length = end - start;
-
-            // Wrap the spec region in a DataReader
-            DataReader specReader(const_cast<uint8_t*>(_view + start), length);
-
-            // Read all NUL-terminated strings until we exhaust the region
-            while (specReader.GetOffset() < length) {
-                _encodingSpecs.push_back(specReader.ReadNullTermString());
-            }
-        }
-    }
-
-    // Resolve the page containing eKey specifications
-    auto [ptr, sz] = _schema.eKeySpec.ResolvePage(
-        _view, _fileSize, target.data(), target.size());
-
-    DataReader reader(const_cast<uint8_t*>(ptr), sz);
-
-    // Each record is: [eKey (_schema.eKeySize bytes)] [idx (4-byte BE)] [encSize (5-byte BE)]
-    const std::size_t recordSize = _schema.eKeySize + 4 + 5;
-
-    // Scan through records
-    while (reader.GetOffset() + recordSize <= sz) {
-        const std::size_t recOff = reader.GetOffset();
-
-        // Compare the eKey prefix
-        if (SequenceEqual(ptr + recOff, target.data(), _schema.eKeySize)) {
-            // Advance past the eKey
-            reader.SetOffset(recOff + _schema.eKeySize);
-
-            // Read the index and size
-            uint32_t idx     = reader.ReadInt32BE();
-            uint64_t encSize = reader.ReadUInt40BE();
-
-            // Return the matching spec string and size
-            return { _encodingSpecs.at(idx), encSize };
-        }
-
-        // No match: skip the entire record
-        reader.SetOffset(recOff + recordSize);
-    }
-
-    // Not found
+//    // Validate that memory-mapped file is still valid
+//    if (!m_file || !m_file->isOpen() || !_view) {
+//        return { "", 0 };
+//    }
+//
+//    // Lazy-load the spec strings (thread-safe)
+//    {
+//        std::lock_guard<std::mutex> lk(_specsMutex);
+//        if (_encodingSpecs.empty()) {
+//            const std::size_t start  = _schema.encodingSpec.start;
+//            const std::size_t end    = _schema.encodingSpec.end;
+//            const std::size_t length = end - start;
+//
+//            // Wrap the spec region in a DataReader
+//            DataReader specReader(const_cast<uint8_t*>(_view + start), length);
+//
+//            // Read all NUL-terminated strings until we exhaust the region
+//            while (specReader.GetOffset() < length) {
+//                _encodingSpecs.push_back(specReader.ReadNullTermString());
+//            }
+//        }
+//    }
+//
+//    // Resolve the page containing eKey specifications
+//    auto [offset, sz] = _schema.eKeySpec.ResolvePage(
+//        _view, _fileSize, target.data(), target.size());
+//
+//    assert(offset + sz <= _fileSize);
+//
+//    DataReader reader(const_cast<uint8_t*>(_view + offset), sz);
+//
+//    // Each record is: [eKey (_schema.eKeySize bytes)] [idx (4-byte BE)] [encSize (5-byte BE)]
+//    const std::size_t recordSize = _schema.eKeySize + 4 + 5;
+//
+//    // Scan through records
+//    while (reader.GetOffset() + recordSize <= sz) {
+//        const std::size_t recOff = reader.GetOffset();
+//
+//        // Compare the eKey prefix
+//        assert(offset + recOff + _schema.eKeySize <= _fileSize);
+//        if (SequenceEqual(_view + offset + recOff, target.data(), _schema.eKeySize)) {
+//            // Advance past the eKey
+//            reader.SetOffset(recOff + _schema.eKeySize);
+//
+//            // Read the index and size
+//            uint32_t idx     = reader.ReadInt32BE();
+//            uint64_t encSize = reader.ReadUInt40BE();
+//
+//            // Return the matching spec string and size
+//            return { _encodingSpecs.at(idx), encSize };
+//        }
+//
+//        // No match: skip the entire record
+//        reader.SetOffset(recOff + recordSize);
+//    }
+//
+//    // Not found
     return { "", 0 };
 }
 
 // TableSchema implementation
-std::pair<const uint8_t*, int64_t>
+std::pair<int64_t, int64_t>
 TableSchema::ResolvePage(const uint8_t* fileData, size_t fileSize,
                          const uint8_t* xKey, size_t keyLen) const
 {
@@ -197,20 +216,23 @@ TableSchema::ResolvePage(const uint8_t* fileData, size_t fileSize,
     EntryIterator beginIt(fileData + header.start, headerEntrySize);
     EntryIterator endIt(fileData + header.end, headerEntrySize);
 
-    auto it = std::lower_bound(beginIt, endIt, xKey,
+    auto it = std::upper_bound(beginIt, endIt, xKey,
         [keyLen](const uint8_t* rec, const uint8_t* needle) {
             return std::memcmp(rec, needle, keyLen) < 0;
         }
     );
-    // If at the beginning, no lower entry
-    if (it == endIt)
-        return { nullptr, 0 };
 
-    size_t index = std::distance(beginIt, --it);
+    if (it == beginIt)
+        return {0,0}; // Not found
+
+    int index = std::distance(beginIt, it) - 1;
+
+//    assert(std::memcmp(&fileData[header.start + index * headerEntrySize], xKey, keyLen) <= 0);
+
     size_t pageOff = pages.start + index * pageSize;
 
     if (pageOff + pageSize > fileSize)
-        return { nullptr, 0 };
+        return { 0, 0 };
 
-    return { fileData + pageOff, pageSize };
+    return { pageOff, pageSize };
 }
