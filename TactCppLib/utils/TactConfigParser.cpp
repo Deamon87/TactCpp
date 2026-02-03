@@ -42,7 +42,10 @@ void TactConfigParser::parse(
     }
 
     // Process each data line
+    bool firstLine = true;
     for (const auto& line : lines) {
+        if (firstLine) {firstLine = false; continue;}
+
         auto recordTokens = tokenize(line, "|");
 
         std::unordered_map<std::string, std::string> record;

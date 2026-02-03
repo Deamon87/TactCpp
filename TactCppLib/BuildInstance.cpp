@@ -57,8 +57,11 @@ void BuildInstance::LoadVersionInfo() {
 
     if ((!settings_.BaseDir.has_value() || settings_.BaseDir->empty()) && !settings_.useTactLocal) {
         auto versions = cdn_->GetPatchServiceFile(settings_.Product, "versions");
+        //Hack for wow_classic_titan
+        auto regionToSearch = settings_.Product != "wow_classic_titan" ? settings_.Region : "cn";
+
         TactConfigParser::parse(versions, {"Region", "BuildConfig", "CDNConfig", "ProductConfig"}, [&](const auto &rec) {
-            if (settings_.Region != rec.at("Region")) { return true;} // continue if region do no match
+            if (regionToSearch != rec.at("Region")) { return true;} // continue if region do no match
 
             if (settings_.BuildConfigPathOrHash.empty())
                 settings_.BuildConfigPathOrHash = rec.at("BuildConfig");
