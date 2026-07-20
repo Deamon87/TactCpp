@@ -23,6 +23,8 @@ public:
     explicit BuildInstance(const Settings &settings_);
     ~BuildInstance();
 
+    bool parseVersions(const std::string &versions, const std::string &regionToSearch);
+
     // file‐opening helpers
     std::vector<uint8_t> OpenFileByName(const std::string &fileName);
     std::vector<uint8_t> OpenFileByFDID(uint32_t fileDataID);

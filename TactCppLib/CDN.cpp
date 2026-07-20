@@ -91,7 +91,7 @@ std::string DownloadTextFromURL(const std::string &url) {
 }
 
 std::string CDN::GetPatchServiceFile(const std::string &product, const std::string &file) {
-    std::string url = std::format("https://{}.version.battle.net/{}/{}", settings_.Region, product, file);
+    std::string url = std::format("https://us.version.battle.net/{}/{}", product, file);
     return DownloadTextFromURL(url);
 }
 
@@ -158,6 +158,14 @@ void CDN::LoadCDNs() {
     if (onlineCDNsLoaded) return;
     std::scoped_lock lock(cdnLoadingMutex_);
     if (onlineCDNsLoaded) return;
+
+    if (!settings_.CDNServersOverride.empty()) {
+        auto servers = tokenizeAndFilter(settings_.CDNServersOverride, " ",
+                                          [](std::string &s) { return !s.empty(); });
+        SetCDNs(servers);
+        onlineCDNsLoaded = true;
+        return;
+    }
 
     if ((!productDirectory_.empty() && !cdnServers_.empty()) || settings_.useTactLocal) return;
 

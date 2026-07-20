@@ -16,7 +16,7 @@
 
 using namespace std;
 
-//#define DUMP_ROOT
+// #define DUMP_ROOT
 #ifdef DUMP_ROOT
 class RootDumper {
 private:
@@ -244,10 +244,20 @@ public:
         m_chunkIndex++;
     }
     
-    void LogEntry(uint32_t fdid) {
-        m_file << "  FDID: " << fdid;
+    void LogEntry(const RootInstance::RootEntry &entry) {
+        m_file << "  FDID: " << entry.fileDataID;
+        if (entry.lookup > 0) {
+            m_file << " lookup: 0x"
+               << std::hex
+               << std::uppercase
+               << std::setfill('0')
+               << std::setw(16)
+               << entry.lookup
+               << std::dec
+               << " ";
+        }
         if (m_listFile && m_listFile->IsLoaded()) {
-            std::string filename = m_listFile->GetFilename(fdid);
+            std::string filename = m_listFile->GetFilename(entry.fileDataID);
             if (!filename.empty()) {
                 m_file << " (" << filename << ")";
                 
@@ -341,6 +351,11 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings, co
         }
 
         newRoot = true;
+    } else {
+        // Old layout has no header/magic: the 4 bytes consumed above by the
+        // magic-check read actually belong to the first block's `count` field.
+        // Rewind so the chunk-parsing loop below sees them.
+        dr.SetOffset(0);
     }
 
     const size_t rootLen = m_data.size();
@@ -391,17 +406,19 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings, co
         size_t blockStart = dr.GetOffset();
         size_t blockSize  = count * (sizeFdid + sizeCHash + (doLookup ? sizeLookup : 0));
 
+        auto fileDataDeltas = dr.sliceAndAdvance(sizeFdid * count);
+
         auto drCopy = dr;
         auto combinedKeys = drCopy.sliceAndAdvance(sizeCHash * count + (doLookup ? sizeLookup : 0) * count);
 
-        auto fileDataDeltas = dr.sliceAndAdvance(sizeFdid * count);
-        auto cKeys = dr.sliceAndAdvance(sizeCHash * count);
-        auto nameLookups = doLookup ? dr.sliceAndAdvance(sizeLookup * count) : DataReader(nullptr,0,0);
+        auto cKeysStorage = dr.sliceAndAdvance(sizeCHash * count);
+        auto nameLookupsStorage = doLookup ? dr.sliceAndAdvance(sizeLookup * count) : DataReader(nullptr,0,0);
 
-        if (!separateLookup) {
-            cKeys = combinedKeys;
-            nameLookups = combinedKeys;
-        }
+        // Old layout interleaves md5+lookup per entry (24-byte stride), so both
+        // reads must share one cursor for the stride to line up correctly;
+        // new layout keeps md5 and lookup in separate, independently-strided arrays.
+        DataReader &cKeys       = separateLookup ? cKeysStorage       : combinedKeys;
+        DataReader &nameLookups = separateLookup ? nameLookupsStorage : combinedKeys;
 
         if (!skipChunk) {
             uint32_t fileIndex = 0;
@@ -426,13 +443,13 @@ RootInstance::RootInstance(const std::string& path, const Settings& settings, co
                 }
 
 #ifdef DUMP_ROOT
-                dumper.LogEntry(entry.fileDataID);
+                dumper.LogEntry(entry);
 #endif // DUMP_ROOT
 
                 if (fullMode)
                     entriesFDIDFull[entry.fileDataID].push_back(entry);
                 else {
-                    if (entriesFDID.find(entry.fileDataID) == entriesFDID.end())
+                    if (!localeSkip && !contentSkip && entriesFDID.find(entry.fileDataID) == entriesFDID.end())
                         entriesFDID.emplace(entry.fileDataID, entry);
                 }
             }

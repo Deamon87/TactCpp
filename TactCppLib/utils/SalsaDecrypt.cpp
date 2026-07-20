@@ -44,15 +44,19 @@ void salsa20Math(const std::array<uint32_t, 16>& initialDancers, std::array<uint
 
 
 void SalsaDecrypt::Decrypt(std::vector<uint8_t>& data, uint64_t offset, const std::string& ivHex, const std::array<uint8_t, 16>& key) {
+    // Parse IV from hex string (must be 8 bytes = 16 hex characters)
+    Decrypt(data, offset, TACTLibUtils::hexToBytes(ivHex), key);
+}
+
+void SalsaDecrypt::Decrypt(std::vector<uint8_t>& data, uint64_t offset, const std::vector<uint8_t>& iv, const std::array<uint8_t, 16>& key) {
     // Validate key size (must be 16 bytes)
     if (key.size() != 16) {
         throw std::invalid_argument("Key must be exactly 16 bytes");
     }
 
-    // Parse IV from hex string (must be 8 bytes = 16 hex characters)
-    std::vector<uint8_t> iv = TACTLibUtils::hexToBytes(ivHex);
+    // Validate IV size (must be 8 bytes)
     if (iv.size() != 8) {
-        throw std::invalid_argument("IV must be exactly 8 bytes (16 hex characters)");
+        throw std::invalid_argument("IV must be exactly 8 bytes");
     }
     uint32_t IV[2] = {0, 0};
     std::copy(iv.begin(), iv.end(), (uint8_t *) &IV[0]);

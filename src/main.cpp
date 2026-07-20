@@ -34,7 +34,7 @@ static std::optional<InputMode> Mode;
 static std::string Input, Output;
 static std::vector<ExtractionTarget> extractionTargets;
 static std::mutex extractionMutex;
-static BuildInstance build;
+static std::unique_ptr<BuildInstance> build = nullptr;
 
 static std::string toHexLower(const std::vector<uint8_t>& data) {
     static constexpr char tbl[] = "0123456789abcdef";
@@ -54,7 +54,7 @@ void HandleEKey(const std::string& eKeyHex, const std::optional<std::string>& fi
                   << ", invalid formatting for EKey (expected 32-char hex)." << std::endl << std::flush;;
         return;
     }
-    ExtractionTarget t{ hexToBytes(eKeyHex), 0, filename.value_or(eKeyHex) };
+    ExtractionTarget t{TACTLibUtils::hexToBytes(eKeyHex), 0, filename.value_or(eKeyHex) };
     std::lock_guard lk(extractionMutex);
     extractionTargets.push_back(std::move(t));
 }
@@ -67,8 +67,8 @@ void HandleCKey(const std::string& cKeyHex, const std::optional<std::string>& fi
                   << ", invalid formatting for CKey (expected 32-char hex)." << std::endl << std::flush;;
         return;
     }
-    auto cKeyBytes = hexToBytes(cKeyHex);
-    auto fileKeys = build.GetEncoding()->FindContentKey(cKeyBytes);
+    auto cKeyBytes = TACTLibUtils::hexToBytes(cKeyHex);
+    auto fileKeys = build->GetEncoding()->FindContentKey(cKeyBytes);
     if (fileKeys.empty()) {
         std::cout << "Skipping " << cKeyHex << ", CKey not found in encoding." << std::endl << std::flush;;
         return;
@@ -86,12 +86,12 @@ void HandleFDID(const std::string& fdidStr, const std::optional<std::string>& fi
                   << ", invalid format (expected unsigned integer)." << std::endl << std::flush;;
         return;
     }
-    auto entries = build.GetRoot()->GetEntriesByFDID(fdid);
+    auto entries = build->GetRoot()->GetEntriesByFDID(fdid);
     if (entries.empty()) {
         std::cout << "Skipping FDID " << fdidStr << ", not found in root.\n";
         return;
     }
-    auto fileKeys = build.GetEncoding()->FindContentKey(entries[0].md5);
+    auto fileKeys = build->GetEncoding()->FindContentKey(entries[0].md5);
     if (fileKeys.empty()) {
         std::cout << "Skipping FDID " << fdidStr
                   << ", CKey not found in encoding.\n";
@@ -121,7 +121,7 @@ void HandleFileName(const std::string& fname, const std::optional<std::string>& 
     std::replace(normName.begin(), normName.end(), '/', '\\');
 
     auto entries =
-        build.GetInstall()->getEntries() |
+        build->GetInstall()->getEntries() |
         std::views::filter([&](auto& entry) {
             return iequals(entry.name, normName);
         }) |
@@ -131,16 +131,16 @@ void HandleFileName(const std::string& fname, const std::optional<std::string>& 
         // fallback via Jenkins96 lookup or listfile...
 
         auto hash = Jenkins96::ComputeHash(normName, true);
-        auto byLookup = build.GetRoot()->GetEntriesByLookup(hash);
+        auto byLookup = build->GetRoot()->GetEntriesByLookup(hash);
         if (!byLookup.empty()) {
-            HandleCKey(MD5ToHexLower(byLookup[0].md5), fname);
+            HandleCKey(TACTLibUtils::MD5ToHexLower(byLookup[0].md5), fname);
             return;
         }
-        // if (build.GetSettings().ListfileFallback) {
+        // if (build->GetSettings().ListfileFallback) {
         //     std::cout << "No file by name \"" << fname
         //               << "\" in install; checking listfile.\n";
         //     if (!listfile.Initialized())
-        //         listfile.Initialize(build.CDN(), build.Settings());
+        //         listfile.Initialize(build->CDN(), build->Settings());
         //     auto id = listfile.GetFDID(fname);
         //     if (id==0) {
         //         std::cout << "No file by name \"" << fname
@@ -174,7 +174,7 @@ void HandleFileName(const std::string& fname, const std::optional<std::string>& 
         }
     }
 
-    auto fileKeys = build.GetEncoding()->FindContentKey(targetMd5);
+    auto fileKeys = build->GetEncoding()->FindContentKey(targetMd5);
     if (fileKeys.empty())
         throw std::runtime_error("EKey not found in encoding");
 
@@ -263,13 +263,13 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        build = BuildInstance(settings);
+        build = std::make_unique<BuildInstance>(settings);
 
         // Load
         auto t0 = std::chrono::high_resolution_clock::now();
-        build.Load();
+        build->Load();
         auto t1 = std::chrono::high_resolution_clock::now();
-        std::cout << "Build " << build.GetBuildConfig()->Values.at("build-name")[0]
+        std::cout << "Build " << build->GetBuildConfig()->Values.at("build-name")[0]
                   << " loaded in "
                   << std::chrono::duration_cast<std::chrono::milliseconds>(t1-t0).count()
                   << "ms\n";
@@ -303,7 +303,7 @@ int main(int argc, char* argv[]) {
                 std::cout << "Extracting " << hex
                           << " to " << t.fileName << std::endl;;
                 try {
-                    auto data = build.OpenFileByEKey(t.eKey, t.decodedSize);
+                    auto data = build->OpenFileByEKey(t.eKey, t.decodedSize);
                     fs::path out = t.fileName;
                     if (!out.parent_path().empty()) {
                         fs::create_directories(out.parent_path());

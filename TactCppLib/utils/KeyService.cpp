@@ -6,8 +6,10 @@
 #include <iomanip>
 #include <filesystem>
 
+#include "stringUtils.h"
+
 // Static member definitions
-std::unordered_map<uint64_t, std::vector<uint8_t>> KeyService::keys_;
+std::unordered_map<uint64_t, std::array<uint8_t, 16>> KeyService::keys_;
 std::unordered_map<std::string, std::array<uint8_t, 16>> KeyService::armadilloKeys_;
 
 bool KeyService::initialized_ = KeyService::Initialize();
@@ -19,7 +21,7 @@ bool KeyService::Initialize() {
     return true;
 }
 
-bool KeyService::TryGetKey(uint64_t keyName, std::vector<uint8_t>& outKey) {
+bool KeyService::TryGetKey(uint64_t keyName, std::array<uint8_t, 16>& outKey) {
     auto it = KeyService::keys_.find(keyName);
     if (it == KeyService::keys_.end())
         return false;
@@ -40,6 +42,8 @@ void KeyService::LoadKeys() {
     if (!std::filesystem::exists(path))
         return;
 
+    KeyService::keys_.clear();
+
     std::ifstream infile(path);
     std::string line;
     while (std::getline(infile, line)) {
@@ -47,6 +51,8 @@ void KeyService::LoadKeys() {
         std::string hexName, hexKey;
         if (!(iss >> hexName >> hexKey))
             continue;
+
+        if (hexKey.length() < 32) continue;
 
         // Parse key name as hex
         uint64_t lookup = 0;
@@ -56,18 +62,18 @@ void KeyService::LoadKeys() {
         }
 
         // Convert hexKey string into bytes
-        std::vector<uint8_t> key;
-        key.reserve(hexKey.size() / 2);
-        for (std::size_t i = 0; i + 1 < hexKey.size(); i += 2) {
-            uint8_t byte = static_cast<uint8_t>(std::stoi(hexKey.substr(i, 2), nullptr, 16));
-            key.push_back(byte);
-        }
+        std::vector<uint8_t> v_key = TACTLibUtils::hexToBytes(hexKey);
+        if (v_key.size() != 16) continue;
+
+        std::array<uint8_t, 16> key;
+        std::copy(v_key.begin(), v_key.end(), key.begin());
 
         KeyService::keys_.emplace(lookup, std::move(key));
     }
 }
 
 void KeyService::LoadArmadilloKeys() {
+    KeyService::armadilloKeys_.clear();
         try {
         // Iterate through all entries in the current directory
         for (const auto& entry : std::filesystem::directory_iterator(".")) {

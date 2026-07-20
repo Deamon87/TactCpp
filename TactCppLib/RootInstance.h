@@ -21,7 +21,7 @@ public:
     struct RootEntry {
         RootWoW::ContentFlags contentFlags;
         RootWoW::LocaleFlags  localeFlags;
-        uint64_t     lookup;
+        uint64_t     lookup = 0;
         uint32_t     fileDataID;
         MD5          md5;
     };

@@ -3,12 +3,15 @@
 //
 
 #include "BLTE.h"
+
+#include <array>
 #include <stdexcept>
 #include <zlib.h>
 #include <cstring>
 
 #include "utils/DataReader.h"
 #include "utils/KeyService.h"
+#include "utils/SalsaDecrypt.h"
 
 std::vector<uint8_t> BLTE::Decode(const std::vector<uint8_t>& data, uint64_t totalDecompSize) {
     const size_t fixedHeaderSize = 8;
@@ -158,7 +161,7 @@ bool BLTE::TryDecrypt(const uint8_t* data, size_t dataSize,
     uint64_t keyName = dr.ReadUInt64LE();
 
     // 3) lookup key
-    std::vector<uint8_t> key;
+    std::array<uint8_t, 16> key;
     if (!KeyService::TryGetKey(keyName, key))
         return false;
 
@@ -189,9 +192,9 @@ bool BLTE::TryDecrypt(const uint8_t* data, size_t dataSize,
 
     if (encType == 'S') {
         output.resize(encryptedSize);
+        output = dr.ReadUint8Array(encryptedSize);
         // decrypt with Salsa
-        //TODO::!!!
-        // KeyService::SalsaInstance().Decrypt(key, iv, data + dataOffset, encryptedSize, output.data());
+        SalsaDecrypt::Decrypt(output, 0, iv, key);
         return true;
     }
     else {

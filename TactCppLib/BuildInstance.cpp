@@ -26,6 +26,30 @@ BuildInstance::~BuildInstance() {
 //    std::cout << "BuildInstance destroyed" << std::endl << std::flush;
 }
 
+bool BuildInstance::parseVersions(const std::string &versions, const std::string &regionToSearch) {
+    bool buildFound = false;
+    TactConfigParser::parse(versions, {"Region", "BuildConfig", "CDNConfig", "ProductConfig"},
+                                   [&](const auto &rec) {
+       if (regionToSearch.length() > 0 && regionToSearch != rec.at("Region")) { return true; }
+       // continue if region do no match
+
+       if (settings_.BuildConfigPathOrHash.empty())
+           settings_.BuildConfigPathOrHash = rec.at("BuildConfig");
+
+       if (settings_.CDNConfigPathOrHash.empty())
+           settings_.CDNConfigPathOrHash = rec.at("CDNConfig");
+
+       if (settings_.ProductConfigHash.empty())
+           settings_.ProductConfigHash = rec.at("ProductConfig");
+
+       buildFound = true;
+
+       return false;
+    });
+
+    return buildFound;
+}
+
 void BuildInstance::LoadVersionInfo() {
     if (settings_.BaseDir.has_value()) {
         fs::path bp = fs::path(settings_.BaseDir.value()) / ".build.info";
@@ -58,22 +82,13 @@ void BuildInstance::LoadVersionInfo() {
     if ((!settings_.BaseDir.has_value() || settings_.BaseDir->empty()) && !settings_.useTactLocal) {
         auto versions = cdn_->GetPatchServiceFile(settings_.Product, "versions");
         //Hack for wow_classic_titan
-        auto regionToSearch = settings_.Product != "wow_classic_titan" ? settings_.Region : "cn";
+        auto regionToSearch = settings_.Region;
 
-        TactConfigParser::parse(versions, {"Region", "BuildConfig", "CDNConfig", "ProductConfig"}, [&](const auto &rec) {
-            if (regionToSearch != rec.at("Region")) { return true;} // continue if region do no match
-
-            if (settings_.BuildConfigPathOrHash.empty())
-                settings_.BuildConfigPathOrHash = rec.at("BuildConfig");
-
-            if (settings_.CDNConfigPathOrHash.empty())
-                settings_.CDNConfigPathOrHash = rec.at("CDNConfig");
-
-            if (settings_.ProductConfigHash.empty())
-                settings_.ProductConfigHash = rec.at("ProductConfig");
-
-            return false;
-        });
+        bool buildFound = parseVersions(versions, regionToSearch);
+        if (!buildFound) {
+            //Grab first existing build if nothing was found by region
+            parseVersions(versions, "");
+        }
     }
 }
 

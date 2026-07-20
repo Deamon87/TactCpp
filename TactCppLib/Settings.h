@@ -14,6 +14,10 @@ struct Settings {
     std::string Region        = "us";
     std::string Product       = "wow";
     std::string CDNPath;
+    // Optional space-separated list of CDN server hostnames (e.g. "level3.blizzard.com
+    // blizzard.gcdn.cloudflare.net"). When non-empty, the battle.net CDN discovery query is
+    // skipped entirely and these servers are used directly.
+    std::string CDNServersOverride;
     RootWoW::LocaleFlags  Locale       = RootWoW::LocaleFlags::enUS;
     RootWoW::LoadMode     RootMode     = RootWoW::LoadMode::Normal;
     std::optional<std::filesystem::path> BaseDir;

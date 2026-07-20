@@ -35,24 +35,24 @@ public:
 
     BuildInfo(const std::string& path, const Settings& settings, CDN& cdn) {
         std::unordered_map<std::string, uint8_t> headerMap;
-        std::unordered_map<std::string, std::string> folderMap;
+        // std::unordered_map<std::string, std::string> folderMap;
 
-        // Scan for .flavor.info files to build folderMap
-        for (const auto& dirEntry : std::filesystem::recursive_directory_iterator(settings.BaseDir.value())) {
-            if (!dirEntry.is_regular_file()) continue;
-            const auto& filePath = dirEntry.path();
-            if (filePath.string().ends_with(".flavor.info")) {
-                std::vector<std::string> flavorLines;
-                std::ifstream flavorFile(filePath);
-                std::string line;
-                while (std::getline(flavorFile, line)) {
-                    flavorLines.push_back(line);
-                }
-                if (flavorLines.size() < 2) continue;
-                // Map product (line 2) to folder name
-                folderMap[flavorLines[1]] = filePath.parent_path().filename().string();
-            }
-        }
+        // // Scan for .flavor.info files to build folderMap
+        // for (const auto& dirEntry : std::filesystem::recursive_directory_iterator(settings.BaseDir.value())) {
+        //     if (!dirEntry.is_regular_file()) continue;
+        //     const auto& filePath = dirEntry.path();
+        //     if (filePath.string().ends_with(".flavor.info")) {
+        //         std::vector<std::string> flavorLines;
+        //         std::ifstream flavorFile(filePath);
+        //         std::string line;
+        //         while (std::getline(flavorFile, line)) {
+        //             flavorLines.push_back(line);
+        //         }
+        //         if (flavorLines.size() < 2) continue;
+        //         // Map product (line 2) to folder name
+        //         folderMap[flavorLines[1]] = filePath.parent_path().filename().string();
+        //     }
+        // }
 
         // Read main build info file
         std::ifstream infile(path);
@@ -91,12 +91,12 @@ public:
                 cdn.SetCDNs(hosts);
             }
 
-            auto itFolder = folderMap.find(ab.Product);
-            if (itFolder != folderMap.end()) {
-                ab.Folder = itFolder->second;
-            } else {
-                std::cout << "No flavor found matching " << ab.Product << std::endl;
-            }
+            // auto itFolder = folderMap.find(ab.Product);
+            // if (itFolder != folderMap.end()) {
+            //     ab.Folder = itFolder->second;
+            // } else {
+            //     std::cout << "No flavor found matching " << ab.Product << std::endl;
+            // }
 
             Entries.push_back(std::move(ab));
         }
